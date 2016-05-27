@@ -34,4 +34,20 @@ ax.set_ylabel("y")
 ax.set_zlabel("z")
 plt.title("Lorenz Attractor")
 
-raw_input()
+# wie wirkt sich ein stoerung aus?
+y0_prime = y0 + 1e-5
+res_prime = solver.odeint(lorenz_rhs, y0_prime, ts)
+xs_prime, ys_prime, zs_prime = res_prime[:,0], res_prime[:,1], res_prime[:,2]
+x_err = xs - xs_prime
+y_err = ys - ys_prime
+z_err = zs - zs_prime
+
+plt.subplot(3, 1, 1)
+plt.plot(ts, x_err)
+plt.title("x")
+plt.subplot(3, 1, 2)
+plt.plot(ts, y_err)
+plt.title("y")
+plt.subplot(3, 1, 3)
+plt.plot(ts, z_err)
+plt.title("z")
