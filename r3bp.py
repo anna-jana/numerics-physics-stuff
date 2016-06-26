@@ -20,7 +20,7 @@ def acceleration_from(x, star_x, star_mass):
     return G*star_mass/d**3*to_star
 
 def simulate(seed=0, years=1.0, h=6300.0, x0=None, v0=None,
-        M=2e30, stars_distance=150e4*1000.0, do_plot=True):
+        M=2e30, stars_distance=150e6*1000.0, do_plot=True):
     """
     Run a simulation of a restricted tree body problem.
     seed = 0 # seed for the random number generator
@@ -72,24 +72,25 @@ def simulate(seed=0, years=1.0, h=6300.0, x0=None, v0=None,
     res = odeint(rhs, y0, ts)
 
     # plot the orbit
-    xs = res[:,0]
-    ys = res[:,1]
-    plt.plot(xs, ys, label="orbit of the body")
-    plt.scatter([x0[0]],[x0[1]], label="starting point")
-    a = np.linspace(0, 2*np.pi, 1000)
-    star_x = stars_radius*np.cos(a)
-    star_y = stars_radius*np.sin(a)
-    plt.plot(star_x, star_y, label="orbit of the two stars")
-    plt.legend()
-    title_format = """
-    Restricted tree body problem
-    M_star = {0}[kg], d_star = {1}[m]
-    x0 = {2}[m]
-    v0 = {3}[m/s]
-    T_star = {4}[years]
-    """
-    plt.title(title_format.format(M, stars_distance, x0, v0, T_star))
-    plt.xlabel("x")
-    plt.ylabel("y")
+    if do_plot:
+        xs = res[:,0]
+        ys = res[:,1]
+        plt.plot(xs, ys, label="orbit of the body")
+        plt.scatter([x0[0]],[x0[1]], label="starting point")
+        a = np.linspace(0, 2*np.pi, 1000)
+        star_x = stars_radius*np.cos(a)
+        star_y = stars_radius*np.sin(a)
+        plt.plot(star_x, star_y, label="orbit of the two stars")
+        plt.legend()
+        title_format = """
+        Restricted tree body problem
+        M_star = {0}[kg], d_star = {1}[m]
+        x0 = {2}[m]
+        v0 = {3}[m/s]
+        T_star = {4}[years]
+        """
+        plt.title(title_format.format(M, stars_distance, x0, v0, T_star))
+        plt.xlabel("x")
+        plt.ylabel("y")
 
     return res
