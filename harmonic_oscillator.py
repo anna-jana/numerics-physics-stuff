@@ -28,16 +28,6 @@ def rhs(y, t):
 ys = solver.odeint(rhs, y0, ts)
 xs = ys[:, 0]
 vs = ys[:, 1]
-plt.subplot(2,2,1)
-plt.title("Position of the harmonic oscillator")
-plt.plot(ts, xs)
-plt.xlabel("t/s")
-plt.ylabel("x/m")
-plt.subplot(2,1,2)
-plt.plot(ts, vs)
-plt.xlabel("t/s")
-plt.ylabel("v/(m/s)")
-plt.title("Velocity of the harmonic oscillator")
 
 # what is the periode of our oscillator?
 periode_numeric = 2*np.mean(np.diff(ts[:-1][np.sign(xs[:-1]) != np.sign(xs[1:])]))
@@ -47,13 +37,22 @@ print("T_sym =", str(periode_analytic) + "s,", "T_num =", str(periode_numeric) +
 # the analytic solution of the harmonic oscillator ODE
 amp = np.sqrt(m/k*v0**2 + x0**2)
 angle_vel = np.sqrt(k/m)
-phase = np.arccos(x0/amp)
+phase = -np.arccos(x0/amp)
 xs_analytic = amp*np.cos(angle_vel*ts + phase)
+
+# plot stuff
+plt.subplot(2,1,1)
+plt.title("Position of the harmonic oscillator")
 plt.plot(ts, xs, label="numeric")
-plt.plot(ts, xs_analytic, label="analytic")
+plt.plot(ts, xs_analytic, "--", label="analytic")
 plt.xlabel("t/s")
 plt.ylabel("x/m")
-plt.title("numerical vs. analytical solution")
 plt.legend()
+
+plt.subplot(2,1,2)
+plt.plot(ts, vs)
+plt.xlabel("t/s")
+plt.ylabel("v/(m/s)")
+plt.title("Velocity of the harmonic oscillator")
 
 raw_input()
