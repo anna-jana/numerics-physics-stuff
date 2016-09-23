@@ -1,53 +1,52 @@
 using PyPlot
 
-function run_simulated_annealing(init_state, neighbor_fn,
-                                 temperatur_fn, energy_fn, probability_fn, steps
-                                 ;draw=false, draw_fn=(x->false))
-    state = init_state
-    energy = energy_fn(state)
-    for step in 0:steps-1
-        new_state = neighbor_fn(state)
-        new_energy = energy_fn(new_state)
-        temperatur = temperatur_fn(step / steps)
-        if probability_fn(energy, new_energy, temperatur) <= rand()
-            state = new_state
-            energy = new_energy
-        end
-        if draw
-            draw_fn(state)
-        end
+f(x) = sin(x)/x # function to optimize
+
+steps = 100 # steps to take
+jump_radius = 1 # max jump
+
+init_radius = 30 # search space
+x = rand()*2*init_radius - init_radius
+
+old_energy = f(x)
+
+# setup bookkeeping
+x_hist = [x]
+f_hist = [old_energy]
+
+for i=1:steps
+    # choose new x to try in our neighborhood
+    Δx = rand()*2*jump_radius - jump_radius
+    new_x = x + Δx
+    new_energy = f(new_x)
+
+    # energy demand of our step
+    ΔE = old_energy - new_energy
+
+    # out temperature is going down
+    T = exp(-steps/i)
+
+    probability = exp(-ΔE/T)
+
+    if rand() <= probability
+        # bookkeeping
+        push!(x_hist, new_x)
+        push!(f_hist, new_energy)
+
+        # set new state
+        x = new_x
+        old_energy = new_energy
+
+        # debug
+        #println("min f($x) = $(old_energy)")
     end
-    return state
 end
 
-f(x) = sin(x) .* 1 ./ x
-x = linspace(-20*pi, 20*pi, 1000);
-y = f(x)
+# plot the function
+xs = linspace(-30,30,1000)
+plot(xs, map(f, xs))
 
-function data_sa(;data=y, steps=2000, radius=100)
-    total_time = 30
-    sleep_time = total_time/steps
-    init_index = rand(1:size(data, 1))
-    function neighbor_fn(index)
-        Δindex = rand(-radius:radius)
-        return min(max(index + Δindex, 1), size(data, 1))
-    end
-    function draw_fn(index)
-        my_x = x[index]
-        clf()
-        plot(x,y)
-        scatter([my_x,],[f(my_x)])
-        show()
-        sleep(sleep_time)
-    end
-    temperatur_fn(t) = t # just guess
-    energy_fn(index) = -data[index]
-    probability_fn(energy_old, energy_new, temperatur) =
-        exp(-(energy_new - energy_old)/temperatur)
-    opt_index = run_simulated_annealing(init_index, neighbor_fn, temperatur_fn,
-                                        energy_fn, probability_fn, steps,
-                                        draw=true, draw_fn=draw_fn)
-    return (opt_index, data[opt_index])
-end
-
-data_sa()
+# display ourway
+#plot(x_hist, f_hist)
+scatter(x_hist, f_hist)
+scatter(x_hist[end], f_hist[end], color="r")
