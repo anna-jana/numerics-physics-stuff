@@ -2,6 +2,9 @@ import numpy as np
 from scipy.linalg import solve
 
 def gauss_elim(A, b):
+    # don't destroy the old arrays
+    A = A.copy()
+    b = b.copy()
     # there are n equations and variables
     n = b.size
     eq_num = n
@@ -46,7 +49,7 @@ def gauss_elim(A, b):
             A[eq_index_to_elim_in, :] = eliminated_eq
             # b[eq_index_to_elim_in] -= b[eq_index_to_elim_with]*alpha
             b[eq_index_to_elim_in] -= alpha*b[eq_index_to_elim_with]
-
+    return A, b
 
 
 def backsubst(A, b):
@@ -65,7 +68,7 @@ print "A:"
 print A
 print "b:"
 print b
-gauss_elim(A, b)
+A, b = gauss_elim(A, b)
 print "Gaussian Elimination:"
 print A
 print b
