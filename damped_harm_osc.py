@@ -55,4 +55,6 @@ def plot_damped_oscillator(m=1.0, k=1.0, b=1.0):
 
 #plot_damped_oscillator()
 #plot_damped_oscillator(b=10.0)
+# Critically damped
+# k = b^2/(4m)
 plot_damped_oscillator(k=1/4.)
