@@ -3,8 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pygame
 
-plt.ion()
-
 EMPTY = 0
 FREE = 1
 FIXED = 2
@@ -30,6 +28,7 @@ class DLAGrid(object):
 
     def plot(self):
         plt.pcolormesh(self.grid)
+        plt.show()
 
     def count_free(self):
         return np.sum(self.grid == FREE)
@@ -82,4 +81,3 @@ class DLAGrid(object):
 grid = DLAGrid(fixed=[(25, 25)])
 grid.steady_state()
 grid.plot()
-raw_input()
