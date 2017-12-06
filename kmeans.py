@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 # setup
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,7 +43,7 @@ for i in range(steps):
     dy = np.array([[(cy - y)**2 for y in ys] for cy in center_ys])
     # for the distance we would need a sqrt but since sqrt is monotonic we can omit it here
     # and get some performence gains
-    dist = dx + dy 
+    dist = dx + dy
 
     # get all point closest to a center i
     min_center_index = np.argmin(dist, axis=0)
@@ -49,14 +51,14 @@ for i in range(steps):
     # dont move centers to new locations if there have no clostest points
     bad_centers = set(range(num_clusters)) - set(min_center_index)
 
-    # compute the center for each cluster 
-    center_xs = np.array([center_xs[i] if i in bad_centers else np.mean(xs[min_center_index == i]) 
+    # compute the center for each cluster
+    center_xs = np.array([center_xs[i] if i in bad_centers else np.mean(xs[min_center_index == i])
         for i in range(num_clusters)])
-    center_ys = np.array([center_ys[i] if i in bad_centers else np.mean(ys[min_center_index == i]) 
+    center_ys = np.array([center_ys[i] if i in bad_centers else np.mean(ys[min_center_index == i])
         for i in range(num_clusters)])
 
 stop = time.time()
-print "compute time: ", stop - start
+print("compute time: ", stop - start)
 
 # plot it
 colors = ["red", "blue", "green"]
@@ -76,5 +78,6 @@ plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
 plt.title("K Means Clustering")
+plt.grid()
 plt.show()
 

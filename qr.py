@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import numpy as np
 
 def gram_schmidt(ws):
@@ -30,4 +32,4 @@ def qr(A):
 A =  np.array([[1,2.],[3,4]])
 Q, R = qr(A)
 
-print "A:\n", A, "\nQ:\n", Q, "\nR:\n", R, "\nQ*R:\n", Q.dot(R)
+print("A:\n", A, "\nQ:\n", Q, "\nR:\n", R, "\nQ*R:\n", Q.dot(R))
