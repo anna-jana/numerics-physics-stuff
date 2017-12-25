@@ -1,3 +1,4 @@
+from __future__ import division, print_function
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -5,11 +6,11 @@ import sys
 np.random.seed(42)
 
 # generate test data
-num_points = 12
+num_points = 100
 num_clusters = 3
 dim = 2
 spread = 1.0
-center_spread = 5.0
+center_spread = 3.0
 
 cluster_centers = np.random.uniform(-center_spread, center_spread, (num_clusters, dim))
 cluster_of_points = np.random.randint(0, num_clusters, num_points)
@@ -40,24 +41,27 @@ for i in range(steps):
 
 final_centers = centers
 
+colors = ["red", "green", "blue"]
+
 # plt.plot(points[:,0], points[:,1], "xr", label="data")
-plt.plot(cluster_centers[:,0], cluster_centers[:,1], "*k", label="real centers")
-plt.plot(initial_centers[:, 0], initial_centers[:, 1], "*r", label="initial centers")
-plt.plot(final_centers[:, 0], final_centers[:, 1], "*g", label="final centers")
+plt.plot(cluster_centers[:,0], cluster_centers[:,1], "ok", label="real centers")
+plt.plot(initial_centers[:, 0], initial_centers[:, 1], "or", label="initial centers")
+plt.plot(final_centers[:, 0], final_centers[:, 1], "og", label="final centers")
 
-for i in range(num_clusters): # clusters as generated
+for i, color in zip(range(num_clusters), colors): # clusters as generated
     cluster = points[cluster_of_points == i]
-    plt.plot(cluster[:, 0], cluster[:, 1], "o", label="generated cluster %d" % i)
+    plt.plot(cluster[:, 0], cluster[:, 1], "+", color=color, label="generated cluster %d" % i)
 
-for i in range(num_find_clusters): # clusters as found
+for i, color in zip(range(num_find_clusters), colors): # clusters as found
     cluster = points[closest_center_index == i]
-    plt.plot(cluster[:, 0], cluster[:, 1], "x", label="infered cluster %d" % i)
+    plt.plot(cluster[:, 0], cluster[:, 1], "x", color=color, label="infered cluster %d" % i)
 
 
 plt.grid()
 plt.title("kmeans clustering")
 plt.xlabel("x")
 plt.ylabel("y")
+plt.xlim(np.min(points[:, 0]) - 1.0, np.max(points[:, 1]) + 4.0)
 plt.legend(numpoints=1)
 plt.show()
 
