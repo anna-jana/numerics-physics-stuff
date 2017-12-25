@@ -1,83 +1,63 @@
-from __future__ import print_function, division
-
-# setup
 import numpy as np
 import matplotlib.pyplot as plt
-import time
+import sys
 
-start = time.time()
-np.random.seed(0)
+np.random.seed(42)
 
-# parameters
+# generate test data
+num_points = 12
 num_clusters = 3
-scale = 2
-cluster_size = 30
-steps = 7
+dim = 2
+spread = 1.0
+center_spread = 5.0
 
-# generate sample data
-num_points = num_clusters*cluster_size
+cluster_centers = np.random.uniform(-center_spread, center_spread, (num_clusters, dim))
+cluster_of_points = np.random.randint(0, num_clusters, num_points)
+cluster_centers_for_points = cluster_centers[cluster_of_points]
+rel_coords = np.random.uniform(-spread, spread, (num_points, dim))
+points = cluster_centers_for_points + rel_coords
 
-cluster_x = scale*np.random.rand(num_clusters)
-cluster_y = scale*np.random.rand(num_clusters)
+# kmeans clustering
+# find initial centers for the iteration
+num_find_clusters = 3
+steps = 10
+num_points = points.shape[0]
+upper = np.max(points, axis=0)
+lower = np.min(points, axis=0)
+initial_centers =  np.random.rand(num_find_clusters, dim) * (upper - lower) + lower
 
-xs = cluster_x.repeat(cluster_size) + (np.random.rand(num_points)/4 - 0.5)
-ys = cluster_y.repeat(cluster_size) + (np.random.rand(num_points)/4 - 0.5)
+centers = initial_centers
 
-# Use k-means clustering to find the center of each cluster
-# make inital guess x and y coordinates of the cluster centers
-init_center_xs = scale*np.random.rand(num_clusters)
-init_center_ys = scale*np.random.rand(num_clusters)
-
-# now refine them
-center_xs = init_center_xs
-center_ys = init_center_ys
-
-# Def. clostest point of a center: a point witch closest center is this one
 for i in range(steps):
-    # assign all points to there clostest center
-    #                   points
-    #                +----------->
-    # cluster center | distance
-    #                V
-    dx = np.array([[(cx - x)**2 for x in xs] for cx in center_xs])
-    dy = np.array([[(cy - y)**2 for y in ys] for cy in center_ys])
-    # for the distance we would need a sqrt but since sqrt is monotonic we can omit it here
-    # and get some performence gains
-    dist = dx + dy
+    # find closest center for each point
+    centers_points_diff = points[None, :] - centers[:, None]
+    centers_dists = np.linalg.norm(centers_points_diff, axis=2)
+    closest_center_index = np.argmin(centers_dists, axis=0)
 
-    # get all point closest to a center i
-    min_center_index = np.argmin(dist, axis=0)
+    # compute new centers
+    new_centers = np.array([np.mean(points[closest_center_index == center_index], axis=0) for center_index in range(num_find_clusters)])
+    centers = new_centers
 
-    # dont move centers to new locations if there have no clostest points
-    bad_centers = set(range(num_clusters)) - set(min_center_index)
+final_centers = centers
 
-    # compute the center for each cluster
-    center_xs = np.array([center_xs[i] if i in bad_centers else np.mean(xs[min_center_index == i])
-        for i in range(num_clusters)])
-    center_ys = np.array([center_ys[i] if i in bad_centers else np.mean(ys[min_center_index == i])
-        for i in range(num_clusters)])
+# plt.plot(points[:,0], points[:,1], "xr", label="data")
+plt.plot(cluster_centers[:,0], cluster_centers[:,1], "*k", label="real centers")
+plt.plot(initial_centers[:, 0], initial_centers[:, 1], "*r", label="initial centers")
+plt.plot(final_centers[:, 0], final_centers[:, 1], "*g", label="final centers")
 
-stop = time.time()
-print("compute time: ", stop - start)
+for i in range(num_clusters): # clusters as generated
+    cluster = points[cluster_of_points == i]
+    plt.plot(cluster[:, 0], cluster[:, 1], "o", label="generated cluster %d" % i)
 
-# plot it
-colors = ["red", "blue", "green"]
+for i in range(num_find_clusters): # clusters as found
+    cluster = points[closest_center_index == i]
+    plt.plot(cluster[:, 0], cluster[:, 1], "x", label="infered cluster %d" % i)
 
-# plot all clusters
-for i in range(num_clusters):
-    x = xs[i*cluster_size:(i + 1)*cluster_size]
-    y = ys[i*cluster_size:(i + 1)*cluster_size]
-    plt.scatter(x, y, color=colors[i], label="cluster " + str(i))
 
-# plot the inital guesses and the final result
-plt.scatter(init_center_xs, init_center_ys, color="black", label="inital guess")
-plt.scatter(center_xs, center_ys, marker="x", color="black", label="final guess")
-
-# labels
+plt.grid()
+plt.title("kmeans clustering")
 plt.xlabel("x")
 plt.ylabel("y")
-plt.legend()
-plt.title("K Means Clustering")
-plt.grid()
+plt.legend(numpoints=1)
 plt.show()
 
