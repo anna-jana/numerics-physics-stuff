@@ -67,9 +67,7 @@ plt.xlabel("x [m]")
 plt.ylabel("v [m/s]")
 plt.grid()
 
-# plot the pointcare section the system
-# the plot is accually a recurrence plot but dune to the Omega periodic externaml force
-# we get approx. the same plot.
+# plot the pointcare section of the system
 plt.figure(3)
 x1 = x[::period_res] # external force has a 2pi/Omega period so period_res points
 x2 = v[::period_res]
