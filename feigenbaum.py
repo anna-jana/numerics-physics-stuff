@@ -2,7 +2,6 @@ from __future__ import division, print_function
 
 import numpy as np
 import matplotlib.pyplot as plt
-import time
 
 def logistic_map_fixpoints(x0, k, steps, to_take):
     xs = np.zeros(steps)
@@ -30,9 +29,5 @@ def plot_feigenbaum(k_start=0.0, k_stop=4.0, k_step=0.001, steps=100, to_take=10
     plt.ylabel("x")
 
 if __name__ == "__main__":
-    start = time.time()
     plot_feigenbaum(k_start=2.8, k_step=0.0001)
-    stop = time.time()
-    compute_time = stop - start
-    print("compute time:", compute_time, "seconds")
     plt.show()
