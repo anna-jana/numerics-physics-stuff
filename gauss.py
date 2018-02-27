@@ -11,7 +11,7 @@ def gauss_elim(A, b):
     var_num = n
     # the equations are the rows and each column is a variable
     # eliminate all variables i in 0..n-1 in the equations i+1..n-1
-    for var_index_to_elim in xrange(0, var_num):
+    for var_index_to_elim in range(0, var_num):
         # find the pivot (max abs) in the row below (and including the main diagonal
         avl = A[var_index_to_elim:, var_index_to_elim]
         best_index = np.argmax(np.abs(avl))
@@ -28,7 +28,7 @@ def gauss_elim(A, b):
         # now is var_index_to_elim also the index of the equation to elimintate with
         eq_index_to_elim_with = var_index_to_elim
         # eliminate the variable `var_index_to_elim` in the equations var_index_to_elim+1..n-1
-        for eq_index_to_elim_in in xrange(var_index_to_elim + 1, eq_num):
+        for eq_index_to_elim_in in range(var_index_to_elim + 1, eq_num):
             # elimintate the variable var_index_to_elim in eq_index_to_elim_in
             # I: equation to eliminate with = A[eq_index_to_elim_with, :]
             eq_to_elim_with = A[eq_index_to_elim_with, :]
@@ -55,25 +55,25 @@ def gauss_elim(A, b):
 def backsubst(A, b):
     n = b.size
     x = np.zeros(n)
-    for var_to_solve in xrange(n - 1, -1, -1):
+    for var_to_solve in range(n - 1, -1, -1):
         other_subs = 0.0
-        for var_to_sub in xrange(var_to_solve + 1, n):
+        for var_to_sub in range(var_to_solve + 1, n):
             other_subs += x[var_to_sub]*A[var_to_solve, var_to_sub]
         x[var_to_solve] = (b[var_to_solve] - other_subs)/A[var_to_solve, var_to_solve]
     return x
 
 A = np.random.rand(3, 3)
 b = np.random.rand(3)
-print "A:"
-print A
-print "b:"
-print b
+print("A:")
+print(A)
+print("b:")
+print(b)
 A, b = gauss_elim(A, b)
-print "Gaussian Elimination:"
-print A
-print b
+print("Gaussian Elimination:")
+print(A)
+print(b)
 x = backsubst(A, b)
-print "solution x:"
-print x
-print "solution using scipy:"
-print solve(A, b)
+print("solution x:")
+print(x)
+print("solution using scipy:")
+print(solve(A, b))

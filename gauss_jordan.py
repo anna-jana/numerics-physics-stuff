@@ -15,14 +15,14 @@ def show_matrix(B):
     return matrix_print
 
 def show(A, B):
-    print ""
+    print("")
     print_A = show_matrix(A)
     print_B = show_matrix(B)
     for row_A, row_B in zip(print_A, print_B):
-        print row_A + " " + row_B
+        print(row_A + " " + row_B)
 
 def map_map(f, xss):
-    return [map(f, xs) for xs in xss]
+    return [list(map(f, xs)) for xs in xss]
 
 A = np.array(map_map(fractions.Fraction,
                  [[6,3,4,5],

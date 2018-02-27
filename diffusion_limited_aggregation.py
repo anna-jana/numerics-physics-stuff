@@ -18,7 +18,7 @@ class DLAGrid(object):
         # put free (moving) cells at random positions
         total_cell_num = rows*columns
         free_cell_num = int(free_part/100.0*total_cell_num)
-        for _ in xrange(free_cell_num):
+        for _ in range(free_cell_num):
             while True:
                 row = random.randint(0, rows-1)
                 column = random.randint(0, columns-1)

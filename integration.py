@@ -8,38 +8,38 @@ def get_step_size(a, b, n):
 
 def riemann_sum_left(f, a, b, n=std_point_num):
     h = get_step_size(a, b, n)
-    return h*sum(f(a + i*h) for i in xrange(n))
+    return h*sum(f(a + i*h) for i in range(n))
 
 def riemann_sum_right(f, a, b, n=std_point_num):
     h = get_step_size(a, b, n)
-    return h*sum(f(a + i*h) for i in xrange(1, n + 1))
+    return h*sum(f(a + i*h) for i in range(1, n + 1))
 
 def upper_sum(f, a, b, n=std_point_num):
     h = get_step_size(a, b, n)
-    return h*sum(max(f(a + h*i), f(a + h*(i + 1))) for i in xrange(n))
+    return h*sum(max(f(a + h*i), f(a + h*(i + 1))) for i in range(n))
 
 def lower_sum(f, a, b, n=std_point_num):
     h = get_step_size(a, b, n)
-    return h*sum(min(f(a + h*i), f(a + h*(i + 1))) for i in xrange(n))
+    return h*sum(min(f(a + h*i), f(a + h*(i + 1))) for i in range(n))
 
 def trapez(f, a, b, n=std_point_num):
     # sum h*(f(a + (i + 1)*h) + f(a + i*h))/2 for i = 0,n-1
     # h*((f(a) + f(b))/2 + sum f(a + i*h) for i = 1,n-1)
     h = get_step_size(a, b, n)
-    return h*(sum(f(a + i*h) for i in xrange(1, n)) + (f(a) + f(b))/2)
+    return h*(sum(f(a + i*h) for i in range(1, n)) + (f(a) + f(b))/2)
 
 def midpoint(f, a, b, n=std_point_num):
     # sum h*f((a + ih + a + h(i + 1))/2) for i = 0..n-1
     # h*sum f(a + hi + h/2) for i = 0..n-1
     # h*sum f(a + h(i + 1/2)) for i = 0..n-1
     h = get_step_size(a, b, n)
-    return h*sum(f(a + h*(i + 0.5)) for i in xrange(n))
+    return h*sum(f(a + h*(i + 0.5)) for i in range(n))
 
 def simpson(f, a, b, n=std_point_num):
     # h/2 * sum f(a + i*h)/3 + 4*f(a + hi + h/2)/3 + f(a + (i + 1)*h)/3
     # h/2 * sum f(a + i*h)/3 + 4*f(a + h(i + 1/2))/3 + f(a + (i + 1)*h)/3
     h = get_step_size(a, b, n)
-    return h/2 * sum(f(a + i*h)/3 + 4*f(a + h*(i + 0.5))/3 + f(a + (i + 1)*h)/3 for i in xrange(n))
+    return h/2 * sum(f(a + i*h)/3 + 4*f(a + h*(i + 0.5))/3 + f(a + (i + 1)*h)/3 for i in range(n))
 
 # TODO: romberg
 

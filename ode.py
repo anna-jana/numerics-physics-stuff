@@ -5,7 +5,7 @@ def forward_euler(f, y0, t):
     ys = np.zeros((t.size, y0.size))
     ys[0, :] = y0
     h = t[1] - t[0]
-    for i in xrange(t.size - 1):
+    for i in range(t.size - 1):
         ys[i + 1, :] = ys[i,:] + h*f(t[i], ys[i,:])
     return ys
 
@@ -13,7 +13,7 @@ def heun(f, y0, t):
     ys = np.zeros((t.size, y0.size))
     ys[0, :] = y0
     h = t[1] - t[0]
-    for i in xrange(t.size - 1):
+    for i in range(t.size - 1):
         k1 = f(t[i], ys[i,:])
         k2 = f(t[i] + h/2, ys[i,:] + h/2*k1)
         ys[i + 1, :] = ys[i,:] + h*(k1 + k2)/2
@@ -23,7 +23,7 @@ def rk4(f, y0, t):
     ys = np.zeros((t.size, y0.size))
     ys[0,:] = y0
     h = t[1] - t[0]
-    for i in xrange(t.size - 1):
+    for i in range(t.size - 1):
         k1 = f(t[i],       ys[i,:])
         k2 = f(t[i] + h/2, ys[i,:] + h/2*k1)
         k3 = f(t[i] + h/2, ys[i,:] + h/2*k2)

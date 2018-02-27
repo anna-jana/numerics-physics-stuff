@@ -38,7 +38,7 @@ def one_D():
     A[N - 1, N - 1] = 1.0
     b[N - 1] = 1.0
 
-    for i in xrange(1, N - 1):
+    for i in range(1, N - 1):
         A[i, i - 1] = 1.0
         A[i, i] = -2.0
         A[i, i + 1] = 1.0
@@ -85,7 +85,7 @@ def linear_interpolate(x0, x1, y0, y1, x):
     rel = (x - x0)/(x1 - x0)
     return y0 + rel*(y1 - y0)
 
-for i in xrange(N):
+for i in range(N):
     # top
     j = 0
     n = cell_to_var(i, j)
@@ -97,7 +97,7 @@ for i in xrange(N):
     A[n, n] = 1.0
     b[n] = linear_interpolate(0, N - 1, u_01, u_11, i)
 
-for j in xrange(M):
+for j in range(M):
     # left
     i = 0
     n = cell_to_var(i, j)
@@ -114,8 +114,8 @@ for j in xrange(M):
 # u_{i - 1, j} - 2u_{i,j} + u_{i + 1, j} + u_{i, j - 1} - 2u_{i, j} + u_{i, j + 1} = 0
 # u_{i - 1, j} - 4u_{i,j} + u_{i + 1, j} + u_{i, j - 1} + u_{i, j + 1} = 0
 
-for i in xrange(1, N - 1):
-    for j in xrange(1, M - 1):
+for i in range(1, N - 1):
+    for j in range(1, M - 1):
         n = cell_to_var(i, j)
         A[n, n] = -4.0
         A[n, cell_to_var(i - 1, j)] = 1.0

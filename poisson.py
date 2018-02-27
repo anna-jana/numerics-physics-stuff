@@ -38,7 +38,7 @@ def solve_pe_fdm(rho, N, M, rho_eps=0.02):
         # n-th variable n = j*M + i
         return j*M + i
 
-    for i in xrange(N):
+    for i in range(N):
         # top
         j = 0
         n = cell_to_var(i, j)
@@ -50,7 +50,7 @@ def solve_pe_fdm(rho, N, M, rho_eps=0.02):
         A[n, n] = 1.0
         b[n] = 0
 
-    for j in xrange(M):
+    for j in range(M):
         # left
         i = 0
         n = cell_to_var(i, j)
@@ -67,8 +67,8 @@ def solve_pe_fdm(rho, N, M, rho_eps=0.02):
     # u_{i - 1, j} - 2u_{i,j} + u_{i + 1, j} + u_{i, j - 1} - 2u_{i, j} + u_{i, j + 1} = \rho(i/N, j/M)*hx*hy/epsilon_0
     # u_{i - 1, j} - 4u_{i,j} + u_{i + 1, j} + u_{i, j - 1} + u_{i, j + 1} = \rho(i/N, j/M)*hx*hy/epsilon_0
 
-    for i in xrange(1, N - 1):
-        for j in xrange(1, M - 1):
+    for i in range(1, N - 1):
+        for j in range(1, M - 1):
             n = cell_to_var(i, j)
             A[n, n] = -4.0
             A[n, cell_to_var(i - 1, j)] = 1.0

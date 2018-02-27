@@ -10,6 +10,6 @@ def minimize(grad, x0, alpha=0.1, max_steps=200, eps=1e-10):
     raise ValueError("failed to converge")
 
 
-print minimize(lambda x: 2*x, 10.0)
+print(minimize(lambda x: 2*x, 10.0))
 
-print minimize(lambda x: np.array([2*x[0], 2*x[1]]), np.array([10.0, 10.9]))
+print(minimize(lambda x: np.array([2*x[0], 2*x[1]]), np.array([10.0, 10.9])))

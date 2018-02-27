@@ -1,3 +1,4 @@
+
 import numpy as np
 
 def power_eig(A, b0=None, max_steps=50, eps=1e-10):
@@ -29,8 +30,8 @@ A = np.array([[0, 0, 1],
 
 val, vec = power_eig(A, b0=np.array([1,1,1]), eps=1e-5)
 
-print "matrix:\n", A
-print "has eigen value", val, "with eigenvector", vec
+print("matrix:\n", A)
+print("has eigen value", val, "with eigenvector", vec)
 
 
 

@@ -8,10 +8,10 @@ def rhs(y, t, *masses):
     num_planets = len(masses)
     y = y.reshape((num_planets, 2, 3))
     ans = y.copy()
-    for i in xrange(num_planets):
+    for i in range(num_planets):
         ans[i, 0, :] = y[i, 1, :] # dx/dt = v
         accel = np.zeros(3)
-        for j in xrange(num_planets):
+        for j in range(num_planets):
             if i != j:
                 between = y[j, 0, :] - y[i, 0, :]
                 dist = np.linalg.norm(between)
@@ -53,7 +53,7 @@ ans = ans.reshape((steps, num_planets, 2, 3))
 # Plot the result
 planet_names = ["Earth", "Mars", "Sun"]
 colors = ["blue", "red", "yellow"]
-for i in xrange(num_planets):
+for i in range(num_planets):
     xs = ans[:, i, 0, 0]/1000.0
     ys = ans[:, i, 0, 1]/1000.0
     plt.plot(xs, ys, label=planet_names[i], color=colors[i])
