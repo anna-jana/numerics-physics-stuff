@@ -4,7 +4,6 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import scipy.integrate as solver
 
-plt.ion()
 plt.style.use("classic")
 
 delta = 10.0
@@ -26,7 +25,7 @@ y0 = np.array([1.0, 1.0, 1.0])
 res = solver.odeint(lorenz_rhs, y0, ts)
 xs, ys, zs = res[:,0], res[:,1], res[:,2]
 
-fig = plt.figure()
+fig = plt.figure(1)
 ax = fig.gca(projection="3d")
 ax.plot(xs, ys, zs)
 ax.set_xlabel("x")
@@ -42,6 +41,7 @@ x_err = xs - xs_prime
 y_err = ys - ys_prime
 z_err = zs - zs_prime
 
+plt.figure(2)
 plt.subplot(3, 1, 1)
 plt.plot(ts, x_err)
 plt.title("x")
@@ -51,3 +51,4 @@ plt.title("y")
 plt.subplot(3, 1, 3)
 plt.plot(ts, z_err)
 plt.title("z")
+plt.show()
