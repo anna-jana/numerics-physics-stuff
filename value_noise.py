@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-plt.ion()
 plt.style.use("ggplot")
 
 def compute_octave(rows, cols, max_val, row_freq, col_freq):
@@ -54,5 +53,4 @@ def normalize_noise(noise):
     return (noise - min(noise))/max(noise)
 
 plt.pcolormesh(value_noise(200, 300, 32.0, 4, 4, 5))
-
-raw_input()
+plt.show()

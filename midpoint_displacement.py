@@ -1,9 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-plt.ion()
-
-
 def make_nth_size(n):
     return 2 ** n + 1
 
@@ -57,4 +54,3 @@ def rec_midpoint_displacement(noise, max_error):
 
 if __name__ == "__main__":
     plt.pcolormesh(midpoint_displacement(make_nth_size(6), max_error=2.0))
-    raw_input()

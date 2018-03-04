@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 from scipy.constants import gravitational_constant as G
 from scipy.integrate import odeint
 
-plt.ion()
-
 def star_positions_at(time, omega, r):
     angle = omega*time
     x1 = np.array([r*np.cos(angle), r*np.sin(angle)])
@@ -92,5 +90,7 @@ def simulate(seed=0, years=1.0, h=6300.0, x0=None, v0=None,
         plt.title(title_format.format(M, stars_distance, x0, v0, T_star))
         plt.xlabel("x")
         plt.ylabel("y")
+
+        plt.show()
 
     return res

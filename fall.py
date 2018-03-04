@@ -3,7 +3,6 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import scipy.integrate as inte
 
-plt.ion()
 plt.style.use("ggplot")
 
 # y = [x, v]
@@ -37,5 +36,3 @@ plt.title("Die Erde faellt auf die Sonne")
 plt.xlabel("t/s")
 plt.ylabel("x/m")
 plt.legend()
-
-raw_input()

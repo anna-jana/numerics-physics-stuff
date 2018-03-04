@@ -2,8 +2,6 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 
-plt.ion()
-
 # lets define the van der pol oscillator!
 # d^2x/tx^2 - mu(1 - x^2)*dx/dt + x = 0
 # d^2x/tx^2 = mu(1 - x^2)*dx/dt - x
@@ -83,8 +81,4 @@ plt.xlabel("t")
 # ok, we have some kind of oscillation going on
 plt.plot(ts, xs)
 plt.plot(ts, xs_eps) # almost equal
-
-
-
-
-raw_input()
+plt.show()

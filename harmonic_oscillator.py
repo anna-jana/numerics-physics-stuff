@@ -3,8 +3,6 @@ import scipy.integrate as solver
 import matplotlib.pyplot as plt
 import numpy as np
 
-plt.ion()
-
 # initial conditions and parameters
 k = 1.0 # N = kg*m/s^2 = k*m => k = kg/s^2
 m = 1.0 # kg
@@ -96,5 +94,3 @@ plt.plot(ts, vs)
 plt.xlabel("t/s")
 plt.ylabel("v/(m/s)")
 plt.title("Velocity of the harmonic oscillator")
-
-raw_input()

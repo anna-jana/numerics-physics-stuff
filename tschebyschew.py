@@ -62,7 +62,7 @@ for i, p in enumerate(tschebyschow(n)):
     xs = list(np.linspace(-1, 1, 100))
     f = poly_to_fn(p)
     #plt.plot(xs, map(f, xs), label="n = {}".format(i))
-    plt.plot(xs, map(f, xs), label=poly_to_string(p))
+    plt.plot(xs, list(map(f, xs)), label=poly_to_string(p))
     # plt.plot(xs, map(f, xs))
 
 plt.legend()
