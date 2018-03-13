@@ -3,33 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 
-np.random.seed(42)
-
-# generate test data
-num_points = 100
-num_clusters = 3
-dim = 2
-spread = 1.0
-center_spread = 3.0
-
-cluster_centers = np.random.uniform(-center_spread, center_spread, (num_clusters, dim))
-cluster_of_points = np.random.randint(0, num_clusters, num_points)
-cluster_centers_for_points = cluster_centers[cluster_of_points]
-rel_coords = np.random.uniform(-spread, spread, (num_points, dim))
-points = cluster_centers_for_points + rel_coords
-
-# kmeans clustering
-# find initial centers for the iteration
-num_find_clusters = 3
-steps = 10
-num_points = points.shape[0]
-upper = np.max(points, axis=0)
-lower = np.min(points, axis=0)
-initial_centers =  np.random.rand(num_find_clusters, dim) * (upper - lower) + lower
-
-centers = initial_centers
-
-for i in range(steps):
+def kmeans_step(points, centers):
     # find closest center for each point
     centers_points_diff = points[None, :] - centers[:, None]
     centers_dists = np.linalg.norm(centers_points_diff, axis=2)
@@ -37,31 +11,35 @@ for i in range(steps):
 
     # compute new centers
     new_centers = np.array([np.mean(points[closest_center_index == center_index], axis=0) for center_index in range(num_find_clusters)])
-    centers = new_centers
 
-final_centers = centers
+    return new_centers
 
-colors = ["red", "green", "blue"]
+# generate test data
+np.random.seed(42)
+num_pts_per_cluster = 10
+num_clusters = 3
+centers = 5*np.random.rand(num_clusters, 2)
+points = centers.repeat(num_pts_per_cluster, axis=0) + np.random.rand(num_pts_per_cluster * num_clusters, 2)
 
-# plt.plot(points[:,0], points[:,1], "xr", label="data")
-plt.plot(cluster_centers[:,0], cluster_centers[:,1], "ok", label="real centers")
-plt.plot(initial_centers[:, 0], initial_centers[:, 1], "or", label="initial centers")
-plt.plot(final_centers[:, 0], final_centers[:, 1], "og", label="final centers")
+# kmeans clustering
+# find initial centers for the iteration
+num_find_clusters = num_clusters
+steps = 10
+initial_centers = np.random.uniform(np.min(points, axis=0), np.max(points, axis=0), size=(num_find_clusters, 2))
 
-for i, color in zip(range(num_clusters), colors): # clusters as generated
-    cluster = points[cluster_of_points == i]
-    plt.plot(cluster[:, 0], cluster[:, 1], "+", color=color, label="generated cluster %d" % i)
+center_steps = [initial_centers]
+for i in range(steps):
+    center_steps.append(kmeans_step(points, center_steps[-1]))
+center_steps = np.array(center_steps)
 
-for i, color in zip(range(num_find_clusters), colors): # clusters as found
-    cluster = points[closest_center_index == i]
-    plt.plot(cluster[:, 0], cluster[:, 1], "x", color=color, label="infered cluster %d" % i)
+plt.plot(points[:, 0], points[:, 1], "xk")
 
+for i in range(num_find_clusters):
+    plt.plot(center_steps[:, i, 0], center_steps[:, i, 1], "-k")
 
-plt.grid()
-plt.title("kmeans clustering")
 plt.xlabel("x")
 plt.ylabel("y")
-plt.xlim(np.min(points[:, 0]) - 1.0, np.max(points[:, 1]) + 4.0)
-plt.legend(numpoints=1)
-plt.show()
+plt.title("kmeans clustering")
+plt.grid()
 
+plt.show()
