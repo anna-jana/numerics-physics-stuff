@@ -1,32 +1,32 @@
-from __future__ import print_function, division
+# plot mandelbrot set
+
+import time
 import numpy as np
 import matplotlib.pyplot as plt
-from numba import jit
-import time
-
-@jit
-def compute_mandelbrotset(lower=-2.5-2j, upper=1.4+2j, pixel_width=700, max_iterations=80, divergence_radius=3.0):
-    pixel_height = int(abs((upper.imag - lower.imag) / (upper.real - lower.real) * pixel_width))
-    image = np.zeros((pixel_height, pixel_width), dtype=np.int)
-    divergence_radius_sq = divergence_radius**2
-    for row, imag in enumerate(np.linspace(lower.imag, upper.imag, pixel_height)):
-        for column, real in enumerate(np.linspace(lower.real, upper.real, pixel_width)):
-            z = 0.0 + 0.0j
-            c = complex(real, imag)
-            div_step = 0 # for jit
-            for step in range(max_iterations):
-                div_step = step
-                z = z*z + c
-                if z.real*z.real + z.imag*z.imag > divergence_radius_sq: # abs(z) > divergence_radius
-                    break
-            image[row, column] = div_step
-    return image
-
 
 start = time.time()
-mandel = compute_mandelbrotset()
-stop = time.time()
-print("took:", stop - start)
+lower = -2 - 1.3j
+upper = 0.6 + 1.3j
+width = 700
+max_iterations = 80
+divergence_radius = 3.0
 
-plt.pcolormesh(mandel, cmap="RdGy")
+height = int((upper.imag - lower.imag) / (upper.real - lower.real) * width)
+real = np.linspace(lower.real, upper.real, width)
+imag = np.linspace(lower.imag, upper.imag, height)
+c = real + 1j * imag[:, None]
+z = np.zeros(c.shape)
+steps = np.zeros(c.shape, dtype=np.int)
+
+for i in range(max_iterations):
+    z = z**2 + c
+    steps += np.abs(z) < divergence_radius
+
+stop = time.time()
+print("took:", stop - start, "seconds")
+
+plt.pcolormesh(real, imag, steps, cmap="RdGy")
+plt.xlabel("Re")
+plt.ylabel("Im")
+plt.title("Mandelbrot Set")
 plt.show()
