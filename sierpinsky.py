@@ -2,6 +2,7 @@ from __future__ import division
 
 import numpy as np
 import pygame
+import matplotlib.pyplot as plt
 
 pygame.init()
 
@@ -10,7 +11,7 @@ def sierpinsky(x=0, y=0, l=10, depth=8):
         return []
     h = np.sqrt(2)/3.0*l
     ps = [(x - l/2, y + h), (x, y), (x + l/2, y + h)]
-    ls = zip(ps, ps[1:] + [ps[0]])
+    ls = list(zip(ps, ps[1:] + [ps[0]]))
     ls += sierpinsky(x, y, l/2, depth - 1)
     ls += sierpinsky(x - l/4, y + h/2, l/2, depth - 1)
     ls += sierpinsky(x + l/4, y + h/2, l/2, depth - 1)

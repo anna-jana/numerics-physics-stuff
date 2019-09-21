@@ -42,7 +42,7 @@ r = np.sqrt(x**2 + y**2 + z**2)
 print("<r> =", np.mean(r))
 print("mean steps:", "analytical: lambda_a / lambda_s =", lambda_a / lambda_s, "numerical:", np.mean(history_length))
 
-plt.hist(r)
+plt.hist(r, histtype="step")
 plt.xlabel("r [cm]")
 plt.ylabel("count out of %i" % (num_particles,))
 plt.title("thermal neutron radiation transport in water")
