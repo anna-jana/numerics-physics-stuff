@@ -20,7 +20,7 @@ def solve_heat_equation_ftcs(D, L, T_initial, T_left, T_right, dt, tspan):
 if __name__ == "__main__":
     N = 120
     D = 1.0
-    t, x, T = solve_heat_equation_ftcs(D, 1.0, np.zeros(N - 1), 0.0, 1.0, 1e-5, 0.1, N)
+    t, x, T = solve_heat_equation_ftcs(D, 1.0, np.zeros(N - 1), 0.0, 1.0, 1e-5, 0.1)
     plt.pcolormesh(x, t, T)
     plt.colorbar()
     plt.xlabel("x [m]")
