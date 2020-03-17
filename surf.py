@@ -5,9 +5,10 @@ from mpl_toolkits.mplot3d import Axes3D
 fig = plt.figure()
 ax = fig.gca(projection="3d")
 
-x = y = np.linspace(0, 3, 100)
+x = y = np.linspace(-2, 2, 100)
 xx, yy = np.meshgrid(x, y)
-zz = np.cos(xx * yy)
+rr = np.sqrt(xx**2 + yy**2)
+zz = rr**4 - 7*rr**2
 surf = ax.plot_surface(xx, yy, zz, cmap="coolwarm")
 
 ax.set_xlabel("x")

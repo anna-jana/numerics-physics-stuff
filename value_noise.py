@@ -50,7 +50,7 @@ def value_noise(rows, cols, max_val, row_freq, col_freq, num_octaves):
 
 def normalize_noise(noise):
     """ normalizes an array to values between 0 and 1 """
-    return (noise - min(noise))/max(noise)
+    return (noise - min(noise)) / (max(noise) - min(noise))
 
 plt.pcolormesh(value_noise(200, 300, 32.0, 4, 4, 5))
 plt.show()
