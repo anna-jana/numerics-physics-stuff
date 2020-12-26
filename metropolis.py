@@ -2,11 +2,14 @@ import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+# E(x) = - log(P(x))
 def metropolis(E, T, r, x):
     while True:
         q = np.random.uniform(-1, 1, x.shape)
         y = x + r * q
         delta_E = E(y) - E(x)
+        # in general
         p = min([1, np.exp(- delta_E / T)])
         if np.random.rand() < p:
             x = y

@@ -26,7 +26,7 @@ def step(curr, prev):
     return nxt, curr
 
 # Initial Conditions
-SIZE = 1000
+SIZE = 400
 particle = np.array([1,2,3,4,5,4,3,2,1]) % N
 # particle = np.array([1]) % N
 particles = [
@@ -43,7 +43,7 @@ for x, v in particles:
 #curr = np.roll(prev, 1)
 
 # Simulation
-STEPS = 1000
+STEPS = 400
 hist = [prev]
 for i in range(STEPS):
     hist.append(curr)
@@ -54,6 +54,6 @@ hist = np.array(hist)
 plt.figure(figsize=(20,10))
 plt.xlabel("Space", fontsize=15)
 plt.ylabel("Time", fontsize=15)
-plt.pcolormesh(hist, cmap="spectral")
+plt.pcolormesh(hist)
 plt.colorbar()
 plt.show()
