@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def step(space):
     neighbor_count = sum(np.roll(space, (dr, dc), (0, 1)) for dr in (-1,0,1) for dc in (-1,0,1)) - space
@@ -20,3 +21,11 @@ if __name__ == "__main__":
     for i in range(10):
         show(space)
         space = step(space)
+
+    space = np.random.randint(0,2,(100,100))
+    while True:
+        plt.clf()
+        plt.pcolormesh(space, cmap="Greys")
+        space = step(space)
+        plt.pause(0.1)
+
