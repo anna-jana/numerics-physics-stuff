@@ -22,12 +22,10 @@ def crank_nicolson_step(psi, dt, dx, E_T, V):
             return new_next_psi
         next_psi = new_next_psi
 
-@jit
 def pseudo_spectral_step(psi, dt, dx, E_T, V):
     k = fftfreq(psi.size, dx) * 2*np.pi
     return np.real(np.exp(-V*dt/2) * ifft(np.exp(- k**2 / 2 * dt) * fft(np.exp(-V*dt/2) * psi)))
 
-@jit
 def solve(stepper, E_T, dt, L):
     x = np.linspace(0, L, N_x)
     dx = x[1] - x[0]
@@ -41,7 +39,11 @@ def solve(stepper, E_T, dt, L):
     # V = 0
     steps = int(tau_final / dt + 1)
     for i in range(steps):
-        if i % 1000 == 0: print("step", i + 1, "of", steps)
+        if i % 1000 == 0:
+            print("step", i + 1, "of", steps)
+            plt.clf()
+            plt.plot(psi)
+            plt.pause(0.01)
         psi = stepper(psi, dt, dx, E_T, V)
     print("initial norm squared:", psi_norm)
     print("final psi norm:", simps(psi**2, x))
@@ -51,7 +53,7 @@ def norm_sq(x, psi):
     return simps(psi**2, x)
 
 
-if True:
+if False:
     N_x = 200
     tau_final = 100
     L = 20
@@ -72,7 +74,7 @@ if True:
     print(E_T_star)
 
 
-if False:
+if True:
     N_x = 200
     tau_final = 200
     L = 20
