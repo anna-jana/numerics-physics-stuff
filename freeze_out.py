@@ -36,7 +36,7 @@ g_rho_over_g_s_interp = interp1d(log10_T_in_MeV, g_rho_over_g_s, kind="cubic", b
 g_s_interp = lambda log10_T_in_MeV: g_rho_interp(log10_T_in_MeV) / g_rho_over_g_s_interp(log10_T_in_MeV)
 
 g = 2 # dofs of the wimp
-M_pl = 1e19 / 8*np.pi * 1e3 # [MeV]
+M_pl =  2.435e18 * 1e3 # [MeV] # https://en.m.wikiversity.org/wiki/Physics/Essays/Fedosin/Planck_mass
 
 def calc_entropy_density(T):
     # s = 2pi**2/45 * g_(*,s)(T) * T**3
