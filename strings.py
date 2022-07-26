@@ -1,3 +1,4 @@
+# https://arxiv.org/pdf/1806.04677.pdf
 import numpy as np, matplotlib.pyplot as plt
 from scipy.fft import fftn, ifftn, fftfreq
 
