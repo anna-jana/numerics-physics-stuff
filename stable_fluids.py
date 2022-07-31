@@ -1,22 +1,31 @@
+import time
 import numpy as np, matplotlib.pyplot as plt
 import scipy.sparse.linalg as sla
 import scipy.interpolate as interp
-import scipy.integrate as inte
 
-plt.ion()
+# dv/dt + (v * nabal) v = grad P - 1 / Re * laplace v
+# laplace p = div v
+# p_inlet = p_inflow
+# p_outlet = p_outflow
+# on the walls including the box: v = 0 and grad p * n = 0
+# stable fluids method: https://www.dgp.toronto.edu/public_user/stam/reality/Research/pdf/ns.pdf
+
+np.random.seed(42)
 
 L1 = 10.0
 L2 = 1.0
-N = 50
-M = 50
+h = 0.1
+N = int(0.5 + L1 / h)
+M = int(0.5 + L2 / h)
 dt = 2.0
 tspan = 100.0
 Re = 1e3
-u0 = 1.0
+P_inflow = 1.0
+P_outflow = -1.0
 dim = 2
-sphere_x = 3.0
-sphere_y = L2/2
-sphere_r = 0.1
+box_h = box_w = 0.3
+box_x = L1 / 10 * 3 - box_w / 2
+box_y = L2 / 2 - box_h / 2
 
 nsteps = int(np.ceil(tspan / dt))
 
@@ -27,52 +36,133 @@ ys = np.linspace(0, L2, M)
 yy, xx = np.meshgrid(ys, xs)
 rr = np.dstack([xx, yy])
 
-# initial conditions
-u = np.zeros((N, M, dim))
-u[0, :, 0] = u0
-u[-1, :, 0] = u0
+box_start_x = int(np.ceil(box_x / dx))
+box_end_x = int(np.ceil((box_x + box_w) / dx))
+box_start_y = int(np.ceil(box_y / dy))
+box_end_y = int(np.ceil((box_y + box_h) / dy))
 
-is_boundary = (
-        (xx == 0) | (xx == L1) | (yy == 0) | (yy == L2) |
-        ((xx - sphere_x)**2 + (yy - sphere_y)**2 < sphere_r**2)
-)
+is_box = np.zeros((N, M), dtype="bool")
+is_box[box_start_x:box_end_x, box_start_y:box_end_y] = True
+is_boundary = (xx == 0) | (xx == L1) | (yy == 0) | (yy == L2) | is_box
 
 grad_P = np.zeros((N, M, dim))
-div_w3 = np.zeros((N, M))
-P_vec = w3_vec = None
+rhs_pressure = np.zeros((N, M))
+P_vec = np.random.randn(N*M)
+w3_vec = None
+u = np.zeros((N, M, dim))
+
+def get_matrix(op):
+    n = op.shape[0]
+    mat = np.empty(op.shape)
+    for i in range(n):
+        v = np.zeros(n)
+        v[i] = 1
+        mat[:, i] = op(v)
+    return mat
+
+def plot(xs, ys, u, P, contourf=True, streamplot=True):
+    fig, axs = plt.subplots(2, 1, constrained_layout=True)
+    # axs[0].set_aspect("equal")
+    if contourf:
+        cont = axs[0].contourf(xs, ys, np.linalg.norm(u, axis=2).T)
+        fig.colorbar(cont, ax=axs[0], label="|v|")
+    if streamplot:
+        axs[0].streamplot(xs, ys, u[:, :, 0].T, u[:, :, 1].T)
+    axs[0].fill([box_x, box_x, box_x + box_w, box_x + box_w],
+                [box_y, box_y + box_h, box_y + box_h, box_y],
+                "white", zorder=100)
+    axs[0].set_xlabel("x")
+    axs[0].set_ylabel("y")
+    # axs[1].set_aspect("equal")
+    cont = axs[1].contourf(xs, ys, P.T)
+    fig.colorbar(cont, ax=axs[1], label="P")
+    axs[1].fill([box_x, box_x, box_x + box_w, box_x + box_w],
+                [box_y, box_y + box_h, box_y + box_h, box_y],
+                "white")
+    axs[1].set_xlabel("x")
+    axs[1].set_ylabel("y")
 
 def op_fn_diffusion(v):
     w = v.reshape(N, M, dim)
+    # dont change the velocity on the walls:
     laplace = np.zeros((N, M, dim))
-    for d in range(dim):
-        laplace[1:-1, 1:-1, d] = (
-                (w[2:, 1:-1, d] - 2*w[1:-1, 1:-1, d] + w[:-2, 1:-1, d]) / dx**2 +
-                (w[1:-1, 2:, d] - 2*w[1:-1, 1:-1, d] + w[1:-1, :-2, d]) / dy**2
-        )
-    for i in range(dim): np.where(is_boundary, 0.0, laplace[..., i])
+    # iterior:
+    laplace[1:-1, 1:-1, :] = (
+            (w[2:, 1:-1, :] - 2*w[1:-1, 1:-1, :] + w[:-2, 1:-1, :]) / dx**2 +
+            (w[1:-1, 2:, :] - 2*w[1:-1, 1:-1, :] + w[1:-1, :-2, :]) / dy**2
+    )
+    # dont change the velocity on the sphere:
+    for i in range(dim): laplace[is_box, i] = 0.0
+    # inlet and outlet:
+    # grad v * n = 0
+    # (dv/dx, dv/dy) * (1, 0) = dv/dx = 0 for both vx and vy
+    laplace[0, 1:-1, :] = (
+            2 * (w[1, 1:-1, :] - w[0, 1:-1, :]) / dx**2 +
+            (w[0, 2:, :] - 2*w[0, 1:-1, :] + w[0, :-2, :]) / dy**2
+    )
+    laplace[-1, 1:-1, :] = (
+            2 * (w[-1, 1:-1, :] - w[-2, 1:-1, :]) / dx**2 +
+            (w[-1, 2:, :] - 2*w[-1, 1:-1, :] + w[-1, :-2, :]) / dy**2
+    )
     return w - 1 / Re * dt * laplace
 op_diff = sla.LinearOperator((N*M*dim, N*M*dim), matvec=op_fn_diffusion)
 
-# on the walls including the sphere: v = 0 and grad p * n = 0
-#[p(x - h) - 2*p(x) + p(x + h)] / dx^2
-#[p(x + h) - p(x - h)] / (2dx) = 0 ==> p(x - h) = p(x + h)
-# 2 * (p(x + h) - p(x)) / dx^2
-
-# on the in and outlets: grad v * n = 0, p = const (inflow = 1.0, outflow = -1.0)
-
 def op_fn_pressure(v):
     P = v.reshape(N, M)
-    laplace = np.zeros((N, M))
-    laplace[1:-1, 1:-1] = (
-            (P[2:, 1:-1] - 2*P[1:-1, 1:-1] + P[:-2, 1:-1]) / dx**2 +
-            (P[1:-1, 2:] - 2*P[1:-1, 1:-1] + P[1:-1, :-2]) / dy**2
+    lhs_pressure = np.zeros((N, M))
+
+    # interiour laplace P = div v
+    # multiply with dx^2 to make the matrix better conditioned (|det| smaller)
+    lhs_pressure[1:-1, 1:-1] = (
+            (P[2:, 1:-1] - 2*P[1:-1, 1:-1] + P[:-2, 1:-1]) +
+            (P[1:-1, 2:] - 2*P[1:-1, 1:-1] + P[1:-1, :-2]) * dx**2 / dy**2
     )
 
-    return laplace
+    # inflow and outflow:
+    lhs_pressure[0, :] = P[0, :]
+    lhs_pressure[-1, :] = P[-1, :]
+
+    # walls:
+    lhs_pressure[1:-1, 0] = P[1:-1, 1] - P[1:-1, 0]
+    lhs_pressure[1:-1, -1] = P[1:-1, -1] - P[1:-1, -2]
+
+    # box
+    lhs_pressure[box_start_x+1:box_end_x-1, box_start_y] = (
+            P[box_start_x+1:box_end_x-1, box_start_y    ] -
+            P[box_start_x+1:box_end_x-1, box_start_y + 1]
+    )
+    lhs_pressure[box_start_x+1:box_end_x-1, box_end_y] = (
+            P[box_start_x+1:box_end_x-1, box_end_y - 1] -
+            P[box_start_x+1:box_end_x-1, box_end_y    ]
+    )
+    lhs_pressure[box_start_x, box_start_y+1:box_end_y-1] = (
+            P[box_start_x    , box_start_y+1:box_end_y-1] -
+            P[box_start_x + 1, box_start_y+1:box_end_y-1]
+    )
+    lhs_pressure[box_end_x, box_start_y+1:box_end_y-1] = (
+            P[box_end_x - 1, box_start_y+1:box_end_y-1] -
+            P[box_end_x    , box_start_y+1:box_end_y-1]
+    )
+
+    # box: +: normal interiour point, *: point where grad P * n = 0, .: point within the box
+    # +***************+
+    # *...............*
+    # *...............*
+    # *...............*
+    # *...............*
+    # +***************+
+
+    lhs_pressure[box_start_x+1:box_end_x-1, box_start_y+1:box_end_y-1] = \
+            P[box_start_x+1:box_end_x-1, box_start_y+1:box_end_y-1]
+
+    return lhs_pressure
 op_laplace_pressure = sla.LinearOperator((N*M, N*M), matvec=op_fn_pressure)
 
+begin = time.perf_counter_ns()
+
 for i in range(nsteps):
-    print(f"step: {i + 1} of {nsteps}")
+    print(f"step: {i + 1} of {nsteps} ...", end="", flush=True)
+    start = time.perf_counter_ns()
 
     # force
     f = 0.0 # no force implemented
@@ -86,7 +176,8 @@ for i in range(nsteps):
     np.clip(advected_ps[:, :, 0], 0, L1, out=advected_ps[:, :, 0])
     np.clip(advected_ps[:, :, 1], 0, L2, out=advected_ps[:, :, 1])
     w2 = interp.interpn((xs, ys), w1, advected_ps)
-    w2[is_boundary, :] = u[is_boundary, :]
+    w2[:, 0, 0] = w2[:, 0, 1] = w2[:, -1, 0] = w2[:, -1, 1] = 0.0 # v = 0 on the walls
+    w2[is_box, 0] = w2[is_box, 1] = 0.0 # v = 0 on the box
 
     # diffuse
     # (1 - 1/Re * dt * laplace) w3 = w2
@@ -95,35 +186,46 @@ for i in range(nsteps):
     w3 = w3_vec.reshape(N, M, dim)
 
     # find pressure
-    # TODO: some of these terms are zero (derivative tangential along the walls of the pipe)
-    div_w3[ 0,  0] = (w3[+1,  0, 0] - w3[ 0,  0, 0]) / dx + (w3[ 0, +1, 1] - w3[ 0,  0, 1]) / dy
-    div_w3[ 0, -1] = (w3[+1, -1, 0] - w3[ 0, -1, 0]) / dx + (w3[ 0, -1, 1] - w3[ 0, -2, 1]) / dy
-    div_w3[-1,  0] = (w3[-1,  0, 0] - w3[-2,  0, 0]) / dx + (w3[-2, +1, 1] - w3[-1,  0, 1]) / dy
-    div_w3[-1, -1] = (w3[-1, -1, 0] - w3[-2, -1, 0]) / dx + (w3[-1, -1, 1] - w3[-1, -2, 1]) / dy
-    div_w3[ 0, 1:-1] = (w3[+1, 1:-1, 0] - w3[ 0, 1:-1, 0]) / dx +     (w3[ 0,   2:, 1] - w3[ 0,  :-2, 1]) / (2*dy)
-    div_w3[-1, 1:-1] = (w3[-1, 1:-1, 0] - w3[-2, 1:-1, 0]) / dx +     (w3[-1,   2:, 1] - w3[-1,  :-2, 1]) / (2*dy)
-    div_w3[1:-1,  0] = (w3[2:, 0   , 0] - w3[:-2,  0 , 0]) / (2*dx) + (w3[1:-1, +1, 1] - w3[1:-1,  0, 1]) / dy
-    div_w3[1:-1, -1] = (w3[2:, -1  , 0] - w3[:-2, -1 , 0]) / (2*dx) + (w3[1:-1, -1, 1] - w3[1:-1, -2, 1]) / dy
-    div_w3[1:-1, 1:-1] = (
-            (w3[2:, 1:-1, 0] - w3[:-2, 1:-1, 0]) / (2*dx) +
-            (w3[1:-1, 2:, 1] - w3[1:-1, :-2, 1]) / (2*dy)
+    # laplace P = div v
+    # inlet and outlet:
+    rhs_pressure[0, :] = P_inflow
+    rhs_pressure[-1, :] = P_outflow
+
+    # interiour laplace P = div v
+    # multiply with dx^2 to make the matrix better conditioned (|det| smaller)
+    rhs_pressure[1:-1, 1:-1] = (
+            (w3[2:,   1:-1, 0] - w3[ :-2, 1:-1, 0]) * dx / 2 +
+            (w3[1:-1, 2:,   1] - w3[1:-1,  :-2, 1]) * dx**2 / (2*dy)
     )
-    P_vec, status = sla.cg(op_laplace_pressure, div_w3.ravel(), x0=P_vec)
+
+    # box
+    rhs_pressure[box_start_x+1:box_end_x-1, box_start_y] = 0
+    rhs_pressure[box_start_x+1:box_end_x-1, box_end_y] = 0
+    rhs_pressure[box_start_x, box_start_y+1:box_end_y-1] = 0
+    rhs_pressure[box_end_x, box_start_y+1:box_end_y-1] = 0
+    rhs_pressure[box_start_x+1:box_end_x-1, box_start_y+1:box_end_y-1] = 0
+
+    # solve system
+    P_vec, status = sla.gcrotmk(op_laplace_pressure, rhs_pressure.ravel(), x0=P_vec, atol=1e-4, maxiter=10**3)
     assert status == 0
     P = P_vec.reshape(N, M)
 
     # add pressure
-    grad_P[1:-1, 1:-1, 0] = (P[2:, 1:-1] - P[:-2, 1:-1]) / (2*dx)
-    grad_P[1:-1, 1:-1, 1] = (P[1:-1, 2:] - P[1:-1, :-2]) / (2*dy)
+    grad_P[1:-1, 1:-1, 0] = (P[ 2:,   1:-1] - P[  :-2, 1:-1]) / (2*dx)
+    grad_P[1:-1, 1:-1, 1] = (P[ 1:-1, 2:  ] - P[ 1:-1,  :-2]) / (2*dy)
+    grad_P[ 0,   1:-1, 1] = (P[ 1,    1:-1] - P[ 0,    1:-1]) / dx
+    grad_P[ 0,   1:-1, 0] = (P[ 0,     :-2] - P[ 0,    2:  ]) / (2*dy)
+    grad_P[-1,   1:-1, 1] = (P[-1,    1:-1] - P[-2,    1:-1]) / dx
+    grad_P[-1,   1:-1, 0] = (P[-1,     :-2] - P[-1,    2:  ]) / (2*dy)
+    grad_P[box_start_x:box_end_x, box_start_y:box_end_y, :] = 0.0 # boundary cond. on box v = 0
+
     w4 = w3 - dt * grad_P
-    w4[is_boundary, :] = u[is_boundary, :]
     u = w4
 
-def plot(xs, ys, u, contourf=True, colorbar=True, streamplot=True):
-    plt.figure()
-    plt.axes().set_aspect("equal")
-    if contourf: plt.contourf(xs, ys, np.linalg.norm(u, axis=2).T)
-    if streamplot: plt.streamplot(xs, ys, u[:, :, 0].T, u[:, :, 1].T)
-    if colorbar: plt.colorbar(label="|v|", orientation="horizontal")
-    plt.xlabel("x")
-    plt.ylabel("y")
+    end = time.perf_counter_ns()
+    print(f" took {(end - start) / 1e9} seconds")
+
+print(f"total: {(end - begin) / 1e9} seconds")
+
+plot(xs, ys, u, P)
+plt.show()
