@@ -1,4 +1,4 @@
-using DifferentialEquations
+using DelayDiffEq
 using PyPlot
 using DynamicalSystems
 using Interpolations
@@ -259,25 +259,3 @@ function main()
     plot_dimensions()
 end
 
-
-function test_fractal_dim(i; tol=0.25, do_standardize=false, k=20, w=1, z=-1)
-    psos = Dataset(@view(readdlm(psos_filename(farmer_taus[i]))[:, 2:3]))
-    if do_standardize
-        psos = standardize(psos)
-    end
-    bs = estimate_boxsizes(psos; k=k, w=w, z=z)
-    H = genentropy.(Ref(psos), bs; q=0.0)
-    x = - log.(bs)
-    idx, slops = linear_regions(x, H; tol=tol)
-    for i in 1:length(idx)-1
-        r = idx[i] + 1 : idx[i+1]
-        plot(x[r], H[r], "x")
-    end
-    lr = findmax([idx[i+1] - idx[i] for i=1:length(idx)-1])[2]
-    r = idx[lr] + 1 : idx[lr + 1]
-    fit = curve_fit((x, p) -> @.(p[1]*x + p[2]), x[r], H[r], [1.0, 1.0])
-    slope = fit.param[1]
-    slope_error = sqrt(estimate_covar(fit)[1, 1])
-    plot(x[r], @.(fit.param[2] + slope*x[r]), "-k")
-    return slope, slope_error
-end

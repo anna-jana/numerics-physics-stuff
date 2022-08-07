@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 start = time.time()
 lower = -2 - 1.3j
 upper = 0.6 + 1.3j
-width = 700
+width = 400
 max_iterations = 80
 divergence_radius = 3.0
 

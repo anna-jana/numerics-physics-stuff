@@ -1,5 +1,5 @@
 using DynamicalSystems
-using DifferentialEquations
+using DelayDiffEq
 using PyPlot
 using Interpolations
 using LinearAlgebra
@@ -147,7 +147,7 @@ function max_lyapunov(K, tau; N=80)
 end
 
 function compute_max_lyapunov_exponent()
-    Ks = range(0.0, 1.1, length=10) # 10 .^ range(-2, 2, length=10)
+    Ks = range(0.0, 1.1, length=10)
     @time lambda_maxs = map(K -> max_lyapunov(K, disp_tau), Ks)
     writedlm(max_lyap_filename, [Ks lambda_maxs])
 end
@@ -160,7 +160,6 @@ function plot_max_lyapunov_exponent()
     axhline(0.0, color="black")
     xlabel("K")
     ylabel(raw"$\lambda_\mathrm{max}$")
-    #xscale("log")
     savefig("pyragas_max_lyapunov_exponent.pdf")
 end
 
@@ -172,22 +171,3 @@ function main()
     compute_max_lyapunov_exponent()
     plot_max_lyapunov_exponent()
 end
-
-
-function old_max_lyapunov(K, tau; debug=false)
-    tmax = 5000.0
-    ks = 1:40
-    steps = 1000.0:1.0:tmax
-    sol = pyragas_control(sys, K.*v, tau, tmax; system_transit=1000.0, dense=true)
-    data = Dataset(sol.(steps))
-    Es = lyapunov_from_data(data, ks)
-    starts, slops = linear_regions(ks, Es; tol=1.0)
-    if debug
-        for i = 1:length(starts) - 1
-            interval = ks[i] : ks[i + 1]
-            plot(interval, Es[interval])
-        end
-    end
-    return slops[1]
-end
-
