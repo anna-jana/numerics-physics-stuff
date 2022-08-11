@@ -60,6 +60,21 @@ def leap_frog(f, y0, t):
         ys[i + 1, :] = ys[i - 1, :] + 2.0 * f(t[i], ys[i, :])*h
     return ys
 
+def dormand_prince_step(f, t, y, dt):
+    k1 = f(t,           y)
+    k2 = f(t + dt*1/5 , y + dt*(k1*1/5))
+    k3 = f(t + dt*3/10, y + dt*(k1*3/40        + k2*9/40))
+    k4 = f(t + dt*4/5 , y + dt*(k1*44/45       + k2*-56/15      + k3*32/9))
+    k5 = f(t + dt*8/9 , y + dt*(k1*19372/6561  + k2*-25360/2187 + k3*64448/6561  + k4*-212/729))
+    k6 = f(t + dt     , y + dt*(k1*9017/3168   + k2*-355/33     + k3*46732/5247  + k4*49/176    + k5*-5103/18656))
+    return y + dt*(k1*35/384 + k3*500/1113 + k4*125/192 + k5*-2187/6784 + k6*11/84)
+
+def dormand_prince(f, y0, t):
+    ys = np.zeros((t.size, y0.size))
+    ys[0, :] = y0
+    for i in range(len(t) - 1):
+        ys[i + 1, :] = dormand_prince_step(f, t[i], ys[i, :], t[i + 1] - t[i])
+    return ys
 
 ################### test cases #####################
 
@@ -101,6 +116,7 @@ def test_harmonic_oscillator():
     test_harm("leap_frog", leap_frog)
     test_harm("AB 2", ab2)
     test_harm("AB 3", ab3)
+    test_harm("dormand prince", dormand_prince)
 
     plt.subplot(2, 1, 1)
     plt.plot(t, exact_xs, "--", label="analytic")
@@ -124,7 +140,7 @@ def test_radioactive_decay():
 
     y0 = np.array([x0])
 
-    t = np.linspace(0, 10.0, 200.0)
+    t = np.linspace(0, 10.0, 200)
 
     def radioactive_decay_rhs(t, y):
         return np.array([- alpha * y[0]])
@@ -146,6 +162,7 @@ def test_radioactive_decay():
     test_radio("leap_frog", leap_frog)
     test_radio("AB 2", ab2)
     test_radio("AB 3", ab3)
+    test_radio("dormand prince", dormand_prince)
 
     plt.subplot(2, 1, 1)
     plt.plot(t, exact_xs, "--", label="analytic solution")
@@ -162,18 +179,9 @@ def test_radioactive_decay():
     plt.legend()
 
 if __name__ == "__main__":
-    plt.figure(1)
+    plt.figure()
     test_harmonic_oscillator()
-
-    plt.figure(2)
+    plt.figure()
     test_radioactive_decay()
-
     plt.show()
-
-
-
-
-
-
-
 
