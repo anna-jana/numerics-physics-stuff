@@ -55,23 +55,6 @@ function plot_evolution()
 
     suptitle("\$\\beta = $beta, n = $n, \\gamma = $gamma\$")
     tight_layout()
-    savefig("machey_glass_evolution.pdf")
-end
-
-function plot_production_feedback_function()
-    figure()
-    x = range(0, 2, length=400)
-    cmap = PyPlot.cm_get_cmap("viridis")
-    n_list = [3, 5, 7, 10, 15, 20]
-    for (i, n) in enumerate(n_list)
-        plot(x, @.(x / (1 + x^n)), color=cmap((i - 1)/(length(n_list) - 1)),
-             label="n = $n")
-    end
-    xlabel("x")
-    ylabel("\$ x/(1 + x^n) \$")
-    legend(ncol=2, framealpha=1)
-    title("\$\\beta = 1\$")
-    savefig("mackey_glass_feedback_function.pdf")
 end
 
 ################## attractor of the mackey glass equation ######################
@@ -105,9 +88,6 @@ function mackey_glass_attractor(beta, n, gamma, tau;
     return sol
 end
 
-########################### bifurcations of the macky glass ###########################
-# n_list = [7, 7.75, 8.5, 8.79, 9.65, 9.696, 9.7056, 9.7451, 10, 20] # numbers from the scholarpedia page
-# beta_list = [1.5, 1.7, 1.76, 1.782, 1.8, 2.0, 2.1]
 function plot_tau_bifurcation()
     figure()
     rows, cols = 3, 2
@@ -121,141 +101,8 @@ function plot_tau_bifurcation()
     end
     suptitle("\$ \\beta = $beta, n = $n, \\gamma = $gamma, \\tau_\\mathrm{embedding} = \\tau\$")
     tight_layout()
-    savefig("mackey_glass_tau_period_doubling_bifurcation.pdf")
 end
 
-############################### poincare section of the macky glass eq #############################
-include("psos_from_fn.jl")
-
-const farmer_delay = 10
-
-# from the FARMER paper
-function mackey_glass_poincare_section(beta, n, gamma, tau;
-        crossing_val=0.85, delay=farmer_delay, direction=-1,
-        time=10000, transit=100, bisections=time)
-    tmax = delay * time
-    @time sol = simulate_mackey_glass(beta, n, gamma, tau; tmax=tmax, dense=true)
-    f(t) = SVector(sol(t), sol(t - delay), sol(t - 2*delay))
-    @time psos = poincare_section_from_function(f, transit*delay, tmax, bisections,
-            SVector(crossing_val, 0, 0), SVector(sign(direction), 0, 0))
-    return psos
-end
-
-fractal_dimension(psos) = generalized_dim(psos; q=0.0)
-
-psos_filename(tau) = "mackey_glass_psos_tau=$tau.dat"
-
-function compute_poincare_sections()
-    for tau in farmer_taus
-        psos = mackey_glass_poincare_section(
-            default_farmer_params.beta, default_farmer_params.n,
-            default_farmer_params.gamma, tau;
-            time=1_000_000, transit=500)
-        writedlm(psos_filename(tau), psos)
-    end
-end
-
-const psos_dim_filename = "mackey_glass_psos_fractal_dimension.dat"
-
-function process_poincare_sections()
-    Ds = Float64[]
-    fig, axes = subplots(2, 2)
-    for (i, tau) in enumerate(farmer_taus)
-        psos = readdlm(psos_filename(tau))
-        axes[i].plot(psos[:, 2], psos[:, 3], ".", ms=0.1)
-        axes[i].set_xlabel("P(t - $farmer_delay)")
-        axes[i].set_ylabel("(P(t - $(2*farmer_delay))")
-        D = fractal_dimension(standardize(Dataset(@view(psos[:, 2:3]))))
-        push!(Ds, D)
-        axes[i].set_title(@sprintf("\$\\tau\$ = %.2f, D = %.2f", tau, D))
-    end
-    tight_layout()
-    savefig("mackey_glass_psos_plot.png")
-    writedlm(psos_dim_filename, Ds)
-end
-
-########################### lyapunov exponents of the macky glass eq ############################
-# advance history vector by tau + dt
-function mackey_glass_method_of_steps_map!(next_history_vector, initial_history_vector, params, _t)
-    beta, n, gamma, tau = params
-    dt = tau / (length(initial_history_vector) - 1)
-    interp = LinearInterpolation(range(0, tau, length=length(initial_history_vector)), initial_history_vector)
-    initial_history(p, t) = interp(t + tau)
-    problem = DDEProblem(mackey_glass_rhs, initial_history_vector[end], initial_history, (0.0, tau + dt), params; constant_lags=[tau])
-    solution = solve(problem, algorithm; solve_kwargs..., saveat=dt)
-    next_history_vector[1:end] = @view(solution.u[2:end])
-    return nothing
-end
-
-function mackey_glass_lyapunov_spectrum(beta, n, gamma, tau; N=80, transit=50, L=50)
-    dds = DiscreteDynamicalSystem(mackey_glass_method_of_steps_map!, repeat([default_P0], N), (beta, n, gamma, tau))
-    return lyapunovspectrum(dds, L; Ttr=transit, show_progress=true)
-end
-
-function lyapunov_dimension(spectrum)
-    if spectrum[1] <= 0.0
-        return NaN
-    else
-        j = findfirst(spectrum .< 0.0)
-        @assert j < length(spectrum)
-        return j + sum(spectrum[1:j]) / abs(spectrum[j + 1])
-    end
-end
-
-const lyapunov_filename = "mackey_glass_lyapunov_spectra.dat"
-
-function compute_lyapunov_spectra()
-    beta, n, gamma, _ = default_farmer_params
-    N = 30
-    specs = Matrix{Float64}(undef, N, length(farmer_taus))
-    for (i, tau) in enumerate(farmer_taus)
-        specs[:, i] = mackey_glass_lyapunov_spectrum(beta, n, gamma, tau; N=N, transit=50, L=30)
-    end
-    writedlm(lyapunov_filename, specs)
-end
-
-const lyapunov_dim_filename = "mackey_glass_lyapunov_dim.dat"
-
-function process_lyapunov_spectra()
-    specs = readdlm(lyapunov_filename)
-    figure()
-    Ds = Float64[]
-    for (i, tau) in enumerate(farmer_taus)
-        spectrum = specs[:, i]
-        D = lyapunov_dimension(spectrum)
-        push!(Ds, D)
-        step(1:length(spectrum), spectrum, where="mid", label="\$\\tau = $tau\$")
-    end
-    xlabel("i")
-    ylabel("\$\\lambda_i\$")
-    beta, n, gamma, _ = default_farmer_params
-    title("\$\\beta = $beta, n = $n, \\gamma = $gamma\$")
-    legend()
-    savefig("mackey_glass_lyapunov_spectra_plot.pdf")
-    writedlm(lyapunov_dim_filename, Ds)
-end
-
-function plot_dimensions()
-    psos_dims = readdlm(psos_dim_filename)
-    lyapunov_dims = readdlm(lyapunov_dim_filename)
-    figure()
-    plot(farmer_taus, psos_dims .+ 1, "x", label="Dimension from Poincare Section")
-    plot(farmer_taus, lyapunov_dims, "+", label="Dimension from Lyapunov Spectrum")
-    xlabel(raw"Delay, $\tau$")
-    ylabel("Dimension, D")
-    legend()
-    savefig("mackey_glass_dim_plot.pdf")
-end
-
-############################################# main ###############################################
-function main()
-    plot_production_feedback_function()
-    plot_evolution()
-    plot_tau_bifurcation()
-    compute_poincare_sections()
-    process_poincare_sections()
-    compute_lyapunov_spectra()
-    process_lyapunov_spectra()
-    plot_dimensions()
-end
-
+plot_evolution()
+plot_tau_bifurcation()
+show()
