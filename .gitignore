@@ -8,3 +8,6 @@
 *.hi
 *.o
 __pycache__
+*.dat
+*.csv
+*.txt
