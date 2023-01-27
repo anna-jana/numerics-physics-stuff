@@ -21,12 +21,14 @@ function compute_max_lyapunov_exponent(rhs_fn, x0, params, δ0, Δt, N)
         p = ODEProblem(rhs_fn, x_test, ((i - 1)*Δt, t), params)
         neighboring_sol = solve(p, solver,  reltol=tol, abstol=tol, dense=true)
         # compute seperation
-        δ = norm(neighboring_sol(t) - ref_sol(t))
+        x_ref = ref_sol(t)
+        x_pert = neighboring_sol(t)
+        diff = x_pert - x_ref
+        δ = norm(diff)
         # update result
         s += log(δ / δ0)
         # rescale the neighboring trajectory
-        x_ref = ref_sol(t)
-        x_test = x_ref + δ0 / δ * (x_test - x_ref)
+        x_test = x_ref + δ0 / δ * diff
     end
     # result
     return s / (Δt * N)
@@ -42,10 +44,8 @@ end
 
 β = 8 / 3.
 σ = 10.0
-ρ_range = 20:0.1:100
-λs = [compute_max_lyapunov_exponent(lorentz_rhs, [1.0, 1.0, 1.0],
-           [β, σ, ρ], 1e-5, 0.001, 20)
-     for ρ = ρ_range]
+ρ_range = range(20, 100, length=30)
+λs = [compute_max_lyapunov_exponent(lorentz_rhs, [1.0, 1.0, 1.0], [β, σ, ρ], 1e-9, 1e-2, 20000) for ρ = ρ_range]
 plot(ρ_range, λs)
 xlabel("\$\\rho\$")
 ylabel("\$\\lambda_1\$")
