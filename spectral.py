@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 from scipy.fftpack import fft, ifft, fftfreq
 
 def diff(x, f, n):
+    # n: number of samples, d sampling distance
+    # k = 2pi {0 ... n / 2 - 1,  - n / 2 .. -1} / (d*n) if n is even
+    # k = 2pi {0 ... (n - 1) / 2, - (n - 1) / 2 ... -1} / (d*n) if n is odd
     k = fftfreq(x.size, x[1] - x[0]) * 2 * np.pi
     return np.real(ifft((1j * k)**n * fft(f)))
 
