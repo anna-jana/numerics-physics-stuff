@@ -1,7 +1,6 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import pygame
 
 EMPTY = 0
 FREE = 1

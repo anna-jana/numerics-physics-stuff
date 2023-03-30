@@ -4,8 +4,6 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import scipy.integrate as solver
 
-plt.style.use("classic")
-
 delta = 10.0
 roh = 28.0
 beta = 8/3
@@ -26,7 +24,7 @@ res = solver.odeint(lorenz_rhs, y0, ts)
 xs, ys, zs = res[:,0], res[:,1], res[:,2]
 
 fig = plt.figure(1)
-ax = fig.gca(projection="3d")
+ax = fig.add_subplot(projection="3d")
 ax.plot(xs, ys, zs)
 ax.set_xlabel("x")
 ax.set_ylabel("y")
