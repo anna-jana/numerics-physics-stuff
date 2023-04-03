@@ -30,20 +30,21 @@ def draw_L_system(steps, angle):
         elif step == "]":
             current_position, current_direction = stack.pop()
 
-rules = {
-    "F": "FF",
-    "X": "F+[[X]-X]-F[-FX]+X",
-}
-start = "X"
-nsteps = 6
-angle = np.deg2rad(25)
-steps = run_L_system(nsteps, start, rules)
-plt.figure()
-draw_L_system(steps, angle)
-ax = plt.gca()
-ax.set_aspect("equal")
-plt.title("\"Barnsley fern\" like plant")
-plt.axis("off")
-plt.show()
+if __name__ == "__main__":
+    rules = {
+        "F": "FF",
+        "X": "F+[[X]-X]-F[-FX]+X",
+    }
+    start = "X"
+    nsteps = 6
+    angle = np.deg2rad(25)
+    steps = run_L_system(nsteps, start, rules)
+    plt.figure()
+    draw_L_system(steps, angle)
+    ax = plt.gca()
+    ax.set_aspect("equal")
+    plt.title("\"Barnsley fern\" like plant")
+    plt.axis("off")
+    plt.show()
 
 
