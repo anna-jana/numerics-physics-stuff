@@ -1,8 +1,6 @@
-from numba import jit
 import numpy as np
 from scipy import linalg as la
 
-@jit
 def lanczos_method(H, m, start=None):
     """
     Lanczos method of matrix H using m Krylov vectors. Uses a random vector a the first Krylov
@@ -47,3 +45,15 @@ def lanczos_method(H, m, start=None):
     T[I, I+1] = T[I+1, I] = beta
     eigen_values, eigen_vectors = la.eigh(T)
     return eigen_values, eigen_vectors, lanczos_vectors
+
+if __name__ == "__main__":
+    n = 20
+    A = np.random.randn(n, n) + np.random.randn(n, n) * 1j
+    A = (A + A.conj().T) / 2
+    m = 5
+    eig_vals, eig_vecs, _ = lanczos_method(A, m)
+    def show(xs):
+        return print(xs[np.argsort(-np.abs(xs))][:5])
+    show(la.eigvals(A).real)
+    show(eig_vals)
+
