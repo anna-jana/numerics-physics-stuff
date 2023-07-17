@@ -3,8 +3,6 @@ module Convection
 using PyPlot
 using StaticArrays
 using LinearAlgebra
-using Base
-using Random
 
 mutable struct Sim
     const Nx :: Int
@@ -21,30 +19,22 @@ mutable struct Sim
     const heat_capacity_V :: Float64
     const thermal_expansion_coeff :: Float64
     const gravity_accel :: Float64
-
     const C_1 :: Float64
     const C_2 :: Float64
     const C_3 :: Float64
-
+    const Ra :: Float64
     const T0 :: Float64
-
     const dx :: Float64
     const dy :: Float64
     const nsteps :: Int
 
     velocity :: Array{SVector{2, Float64}, 2}
     velocity_without_pressure :: Array{SVector{2, Float64}, 2}
-    velocity_new :: Array{SVector{2, Float64}, 2}
     temperature :: Array{Float64, 2}
-    temperature_new :: Array{Float64, 2}
-
     div_v :: Array{Float64, 2}
     pressure :: Array{Float64, 2}
-
-    velocity_rhs :: Array{SVector{2, Float64}, 2}
-    prev_velocity_rhs :: Array{SVector{2, Float64}, 2}
-    temperature_rhs :: Array{Float64, 2}
-    prev_temperature_rhs :: Array{Float64, 2}
+    explicit_velocity_rhs :: Array{SVector{2, Float64}, 2}
+    explicit_temperature_rhs :: Array{Float64, 2}
 
     step :: Int
     time :: Float64
@@ -55,22 +45,23 @@ end
 function init() :: Sim
     println("initializing simulation...")
     # parameter
-    Nx = 50
-    Ny = 25
+    Nx = 100
+    Ny = 50
     # in physical units
-    Lx = 2.0
-    Ly = 1.0
+    Lx = 10.0
+    Ly = 10.0
     T_top = 1.0
-    T_bottom = 2.0
+    T_bottom = 10.0
     # time in internal units
-    dt = 1e-7
-    tspan = 0.1
+    dt = 1e-5
+    tspan = 1e-2
     # in physical units:
     mean_density = 1.0
-    kinematic_viscosity = 0.1
-    thermal_conductivity = 1.0
+    kinematic_viscosity = 10.0
+    thermal_conductivity = 10.0
     heat_capacity_V = 1.0
-    thermal_expansion_coeff = 1.0
+    heat_capacity_P = 1.0
+    thermal_expansion_coeff = 10.0
     gravity_accel = 10.0
 
     # computation of characterisitic dimensionless parameters
@@ -83,6 +74,9 @@ function init() :: Sim
     C_3 = thermal_conductivity * time_scale / (mean_density * heat_capacity_V * Ly^2)
 
     T0 = T_top / Delta_T
+    Ra = gravity_accel * thermal_expansion_coeff / (kinematic_viscosity * thermal_conductivity) * Delta_T * Ly^3
+    @show Ra, Ra < 1700
+    @show - (T_top - T_bottom) / Ly < gravity_accel * thermal_expansion_coeff * T0 / heat_capacity_P
 
     # derived discretisation parameters
     dx = (Lx / Ly) / Nx
@@ -90,73 +84,32 @@ function init() :: Sim
     nsteps = ceil(Int, tspan / dt)
 
     # allocate arrays for the differnent fields
-    velocity = Array{SVector{2, Float64}, 2}(undef, (Nx, Ny))
-    for i in eachindex(velocity)
-        velocity[i] = zero(eltype(velocity))
-    end
-    #for j in 2:Ny-1
-    #    for i in 1:Nx
-    #        velocity[i, j] += SVector((2*rand() - 1), (2*rand() - 1)) / 100.0
-    #    end
-    #end
-    velocity_without_pressure = similar(velocity)
-    velocity_new = similar(velocity)
-    for i in 1:Nx
-        velocity_without_pressure[i, 1] = velocity_new[i, 1] = velocity[i, 1]
-        velocity_without_pressure[i, end] = velocity_new[i, end] = velocity[i, end]
-    end
+    velocity = zeros(SVector{2, Float64}, (Nx, Ny))
+    velocity_without_pressure = zeros(SVector{2, Float64}, (Nx, Ny))
 
     temperature = zeros(Nx, Ny) .+ T_top
     temperature[:, Ny] .= T_bottom
     temperature[:, :] ./= Delta_T
-    temperature_new = similar(temperature)
-    temperature_new[:, 1] = temperature[:, 1]
-    temperature_new[:, end] = temperature[:, end]
-    #temperature[:, 2:end-1] .+= rand(Nx, Ny-2) / 100
+    temperature[1:div(Nx, 2), end - 1] .= temperature[1, end]
 
     div_v = zeros(Nx, Ny)
-    #pressure = ones(Nx, Ny)
-    pressure = ones(Nx, Ny) .+ 1e-5 .*(2 .* rand(Nx, Ny) .- 1)
+    pressure = ones(Nx, Ny)
 
-    velocity_rhs = Array{SVector{2, Float64}, 2}(undef, (Nx, Ny))
-    prev_velocity_rhs = similar(velocity_rhs)
-    temperature_rhs = Array{Float64, 2}(undef, (Nx, Ny))
-    prev_temperature_rhs = similar(temperature_rhs)
-
-    println("checking CFL condition...")
-    min_dt_temperature = 0.5 * dy^2 * C_3
-    min_dt_viscosity = 0.5 * dy^2 * C_1
-    @show min_dt_temperature
-    @show min_dt_viscosity
-    @show dt
-    @show dt < min_dt_temperature
-    @show dt < min_dt_viscosity
+    explicit_velocity_rhs = similar(velocity)
+    explicit_temperature_rhs = similar(temperature)
 
     return Sim(
         Nx, Ny, Lx, Ly, T_top, T_bottom, dt, tspan, mean_density, kinematic_viscosity,
         thermal_conductivity, heat_capacity_V, thermal_expansion_coeff,
         gravity_accel,
-        C_1, C_2, C_3, T0,
+        C_1, C_2, C_3, Ra, T0,
         dx, dy, nsteps,
-        velocity, velocity_without_pressure, velocity_new,
-        temperature, temperature_new,
+        velocity, velocity_without_pressure,
+        temperature,
         div_v, pressure,
-        velocity_rhs, prev_velocity_rhs, temperature_rhs, prev_temperature_rhs,
+        explicit_velocity_rhs, explicit_temperature_rhs,
         0, 0.0,
     )
-end
-
-# functions for taking finite differences
-function laplace_at(sim:: Sim, field, i, j)
-    d2_field_dx2 = (field[mod1(i + 1, sim.Nx), j] - 2 * field[i, j] + field[mod1(i - 1, sim.Nx), j]) / sim.dx^2
-    d2_field_dy2 = (field[i, j + 1]               - 2 * field[i, j] + field[i, j - 1])               / sim.dy^2
-    return d2_field_dx2 + d2_field_dy2
-end
-
-function grad_at(sim::Sim, field, i, j)
-    diff_x = (field[mod1(i + 1, sim.Nx), j] - field[mod1(i - 1, sim.Nx), j]) / (2*sim.dx)
-    diff_y = (field[i, j + 1]               - field[i, j - 1])               / (2*sim.dy)
-    return SVector(diff_x, diff_y)
 end
 
 function upwind_grad_at(sim::Sim, field, i, j)
@@ -174,61 +127,87 @@ function upwind_grad_at(sim::Sim, field, i, j)
     return SVector(diff_x, diff_y)
 end
 
-function compute_rhs!(sim::Sim)
-    # updating
+function time_step!(sim::Sim)
+    # compute the explicit part
+    println("explicit")
     for j in 2:sim.Ny-1
         for i in 1:sim.Nx
             v = sim.velocity[i, j]
             T = sim.temperature[i, j]
-
-            # velocity (Navier-Stokes) rhs
-            # grad_v = grad_at(sim, sim.velocity, i, j) # ftcs
             grad_v = upwind_grad_at(sim, sim.velocity, i, j)
-
             advection_velocity = SVector(
              v[1] * grad_v[1][1] + v[2] * grad_v[2][1],
              v[1] * grad_v[1][2] + v[2] * grad_v[2][2],
             )
-
-            sim.velocity_rhs[i, j] = (
-                              - advection_velocity
-                                # firction/diffusion
-                              + sim.C_1 * laplace_at(sim, sim.velocity, i, j)
-            )
-            # gravity (only y direction)
-            sim.velocity_rhs[i, j] += SVector(0.0, - sim.C_2 * (T - sim.T0))
-
-            # temperature advection + diffusion
-            sim.temperature_rhs[i, j] = (
-                              - dot(v, upwind_grad_at(sim, sim.temperature, i, j)) # advection
-                              + sim.C_3 * laplace_at(sim, sim.temperature, i, j) # diffusion
-            )
-
+            sim.explicit_velocity_rhs[i, j] = v / sim.dt - advection_velocity
+            sim.explicit_velocity_rhs[i, j] += SVector(0.0, - sim.C_2 * (T - sim.T0))
+            grad_T = upwind_grad_at(sim, sim.temperature, i, j)
+            sim.explicit_temperature_rhs[i, j] = T / sim.dt - dot(v, grad_T) # advection
         end
     end
-end
 
-function time_integrator_step!(sim)
-    for j in 2:sim.Ny - 1
-        for i in 1:sim.Nx
-            if sim.step == 0
-                # explict euler
-                sim.velocity_without_pressure[i, j] = sim.velocity[i, j] + sim.dt * sim.velocity_rhs[i, j]
-                sim.temperature_new[i, j] = sim.temperature[i, j] + sim.dt * sim.temperature_rhs[i, j]
-            else
-                # adams bashforth 2nd order
-                sim.velocity_without_pressure[i, j] = sim.velocity[i, j] + sim.dt * (3/2 * sim.velocity_rhs[i, j] - 1/2 * sim.prev_velocity_rhs[i, j])
-                sim.temperature_new[i, j] = sim.temperature[i, j] + sim.dt * (3/2 * sim.temperature_rhs[i, j] - 1/2 * sim.prev_temperature_rhs[i, j])
+    # gauss seidel - overrelaxation loop to solve the implicit equation for velocity
+    println("implicit velocity")
+    eps = 1e-10
+    prefactor_velocity = 1 / sim.dt + sim.C_1 * 2 * (1 / sim.dx^2 + 1 / sim.dy^2)
+    copy!(sim.velocity_without_pressure, sim.velocity) # initial guess is the velocity from the last step
+    while true
+        mse = 0.0
+        for j in 2:sim.Ny-1
+            for i in 1:sim.Nx
+                neighbor_sum = (
+                    sim.velocity_without_pressure[mod1(i - 1, sim.Nx), j] / sim.dx^2 +
+                    sim.velocity_without_pressure[mod1(i + 1, sim.Nx), j] / sim.dx^2 +
+                    sim.velocity_without_pressure[i, j - 1] / sim.dy^2 +
+                    sim.velocity_without_pressure[i, j + 1] / sim.dy^2
+                )
+                new_val = sim.explicit_velocity_rhs[i, j] + sim.C_1 * neighbor_sum
+                new_val /= prefactor_velocity
+                mse += norm(sim.velocity_without_pressure[i, j] - new_val)^2
+                sim.velocity_without_pressure[i, j] = new_val
             end
         end
+        mse = sqrt(mse / (sim.Nx * (sim.Ny - 2)))
+        if !isfinite(mse)
+            error("divergence")
+        end
+        @show mse
+        if mse < eps
+            break
+        end
     end
-    (sim.velocity_rhs, sim.prev_velocity_rhs, sim.temperature_rhs, sim.prev_temperature_rhs) =
-        (sim.prev_velocity_rhs, sim.velocity_rhs, sim.prev_temperature_rhs, sim.temperature_rhs)
+
+    # gauss seidel - overrelaxation loop to solve the implicit equation for temperature
+    println("implicit temperature")
+    prefactor_temperature = 1 / sim.dt + sim.C_1 * 2 * (1 / sim.dx^2 + 1 / sim.dy^2)
+    eps = 1e-10
+    while true
+        mse = 0.0
+        for j in 2:sim.Ny-1
+            for i in 1:sim.Nx
+                neighbor_sum = (
+                    sim.temperature[mod1(i - 1, sim.Nx), j] / sim.dx^2 +
+                    sim.temperature[mod1(i + 1, sim.Nx), j] / sim.dx^2 +
+                    sim.temperature[i, j - 1] / sim.dy^2 +
+                    sim.temperature[i, j + 1] / sim.dy^2
+                )
+                new_val = sim.explicit_temperature_rhs[i, j] + sim.C_3 * neighbor_sum
+                new_val /= prefactor_temperature
+                mse += (sim.temperature[i, j] - new_val)^2
+                sim.temperature[i, j] = new_val
+            end
+        end
+        mse = sqrt(mse / (sim.Nx * (sim.Ny - 2)))
+        @show mse
+        if mse < eps
+            break
+        end
+    end
 end
 
 function chorin_projection!(sim::Sim)
     # compute the divergence of the updated velocity v*
-    # interior
+    println("chorin_projection")
     for j in 2:sim.Ny - 1
         for i in 1:sim.Nx
             if sim.velocity_without_pressure[i, j][1] > 0
@@ -250,16 +229,15 @@ function chorin_projection!(sim::Sim)
             sim.div_v[i, j] = d_v_x_dx + d_v_y_dy
         end
     end
-
-    sim.div_v[:, :] ./= sim.dt
+    # sim.div_v[:, :] ./= sim.dt
 
     # solve laplace P = density / dt * div v* using gauss-seidel iteration
-    eps = 1e-5
+    eps = 1e-6
     omega = 0.8
-
-
+    iteration = 0
     while true
         mse = 0.0
+        mean_P = 0.0
         # interior
         for j in 2:sim.Ny - 1
             for i in 1:sim.Nx
@@ -273,38 +251,23 @@ function chorin_projection!(sim::Sim)
                 P_new = (1 - omega) * sim.pressure[i, j] + omega * P_new
                 # error calculation
                 mse += (sim.pressure[i, j] - P_new)^2
+                mean_P += P_new^2
                 sim.pressure[i, j] = P_new
             end
         end
+        mean_P /= (sim.Nx * (sim.Ny - 2))
         # error calculation
-        mse /= (sim.Nx * (sim.Ny - 2))
+        mse /= (sim.Nx * (sim.Ny - 2)) * mean_P
         mse = sqrt(mse)
-
-        clf()
-        subplot(2,2,1)
-        pcolormesh(sim.pressure)
-        title("P")
-        colorbar()
-        subplot(2,2,2)
-        pcolormesh(sim.div_v)
-        title("div v")
-        colorbar()
-        subplot(2,2,3)
-        pcolormesh([v[1] for v in sim.velocity])
-        title("v_x")
-        colorbar()
-        subplot(2,2,4)
-        pcolormesh([v[2] for v in sim.velocity])
-        title("v_y")
-        colorbar()
-        pause(0.001)
-
+        print("\rmse = $mse, mean_P = $mean_P, iteration = $iteration")
+        iteration += 1
         # convergence
         if mse <= eps
             break
         end
-        @show mse, maximum(sim.pressure)
     end
+    println("")
+
     # top
     for i in 1:sim.Nx
         sim.pressure[i, 1] = sim.pressure[i, 2]
@@ -317,29 +280,23 @@ function chorin_projection!(sim::Sim)
     # correct velocity by v = v* + dt / density * grad P
     for j in 2:sim.Ny - 1
         for i in 1:sim.Nx
-            grad_P = grad_at(sim, sim.pressure, i, j)
-            grad_P += SVector(0.0, sim.mean_density * sim.gravity_accel)
-            sim.velocity_new[i, j] = sim.velocity_without_pressure[i, j] - sim.dt * grad_P
+            diff_x = (sim.pressure[mod1(i + 1, sim.Nx), j] - sim.pressure[mod1(i - 1, sim.Nx), j]) / (2*sim.dx)
+            diff_y = (sim.pressure[i, j + 1]               - sim.pressure[i, j - 1])               / (2*sim.dy)
+            grad_P = SVector(diff_x, diff_y)
+            # grad_P += SVector(0.0, sim.mean_density * sim.gravity_accel)
+            # sim.velocity[i, j] = sim.velocity_without_pressure[i, j] - sim.dt * grad_P
+            sim.velocity[i, j] = sim.velocity_without_pressure[i, j] - grad_P
         end
     end
 end
 
 
-# TODO: implmenet different schemes:
-# ftcs (done)
-# upwind differencing (done),
-# adams-bashforth timestepping (done),
-# Lax Method,
-# implicit methods
 function step!(sim::Sim)
     println("step = $(sim.step) / $(sim.nsteps)")
 
-    compute_rhs!(sim)
-    time_integrator_step!(sim)
+    time_step!(sim)
     chorin_projection!(sim)
 
-    (sim.velocity_new, sim.temperature_new, sim.velocity, sim.temperature) = (
-             sim.velocity, sim.temperature, sim.velocity_new, sim.temperature_new)
     sim.step += 1
     sim.time += sim.dt
 end
@@ -348,45 +305,52 @@ function plot(sim::Sim)
     println("plotting...")
     xs = range(0, sim.Lx, sim.Nx)
     ys = range(0, sim.Ly, sim.Ny)
-    suptitle("thermal convection with boussinesq approximation and chorin projection")
+    suptitle("thermal convection with boussinesq approximation and\nchorin projection, step = $(sim.step)")
+    ncols = 2
+    nrows = 2
 
-    subplot(3,1,1)
+    subplot(nrows, ncols, 1)
     pcolormesh(xs, ys, transpose(sim.temperature))
     colorbar()
     xlabel("x")
     ylabel("y")
     gca().invert_yaxis()
+    gca().set_aspect("equal")
     title("temperature")
 
-    subplot(3,1,2)
+    subplot(nrows, ncols, 2)
     pcolormesh(xs, ys, transpose([v[1] for v in sim.velocity]))
     colorbar()
     xlabel("x")
     ylabel("y")
     gca().invert_yaxis()
+    gca().set_aspect("equal")
     title("velocity x")
 
-    subplot(3,1,3)
+    subplot(nrows, ncols ,3)
     pcolormesh(xs, ys, transpose([v[2] for v in sim.velocity]))
     colorbar()
     xlabel("x")
     ylabel("y")
     gca().invert_yaxis()
+    gca().set_aspect("equal")
     title("velocity y")
+
+    subplot(nrows, ncols, 4)
+    pcolormesh(xs, ys, transpose(sim.pressure))
+    colorbar()
+    xlabel("x")
+    ylabel("y")
+    gca().invert_yaxis()
+    gca().set_aspect("equal")
+    title("pressure")
 
     tight_layout()
 end
 
 end
 
-using PyPlot
-figure()
 sim = Convection.init()
 for i in 1:sim.nsteps
     Convection.step!(sim)
-    if false # i % 100 == 0
-        clf()
-        Convection.plot(sim)
-        pause(0.0001)
-    end
 end
