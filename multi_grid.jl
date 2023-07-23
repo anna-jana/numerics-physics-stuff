@@ -1,60 +1,6 @@
 # https://www.youtube.com/playlist?list=PLnJ8lIgfDbkoZ33CHr-p6z2CBkp9OTcWj
 # Numerical Recipes 3rd edition - chapter 20.6
 #
-# basic idea:
-# gauss seidel remove high frequencies from the error field e = x_current - x_solution
-# so:
-#   - start with finer grid
-#   - smooth (remove high frequency errors) via a few steps of the gauss seidel method
-#   - move to coarser grid -> low frequency errors become high frequency ones
-#   - smooth (remove hight frequency errors, which are acutally the low frequency ones)
-#   - move from coarser grid to finer grid ->
-#   - perform a few solve iterations to finalize
-#
-# problem: the solution x has too many hight frequency components on the finter grid (errors or actual features of the solution)
-# -> interpolation errors to the courser grid (aliasing) is too hight
-# solution: correction equation
-# Ax_init = b
-# Ax_new = b <- this is what we want
-# b - Ax_init = r
-# Ax_new - Ax_init = r
-# A(x_new - x_init) = r
-# A Delta x = r
-# Delta x = x_new - x_init
-# Delta x is an approximation to the iteration error e = x_iteration - x_solution
-# the iteration error is smooth after a few iterations
-# ==> Delta x is smooth after a few iterations
-# ===> we solve the correction equation on the courser grid, not the original equation
-# after going back to the fine grid, we can compute the result by:
-# x_approx_solution = Delta x + x_init
-#
-# moving from finer to coarser grid and from coarser to finer:
-# agglomeration (combining of cells)
-#
-# Algorithm:
-# * few gauss seidel iterations
-#   - to obtain initial guess (remove high frequency errors) x_init
-# * calculate residual (is smooth)
-#   r = B - A x_init
-# * restriction (matrix R): move residual to coarser grid (okay bc its smooth):
-#   - sum neigboring cells
-#   - one can use a fancy algorithm to choose which cells to join,
-#           but we will just use blocks of 2x2 cells for now)
-# * few iterations of A' Delta x' = r to remove high frequency errors on coarser grid
-#   - which are the low frequency errors on finer grid
-# * prolongation (matrix P):
-#   - move solution (Delta x') to finer grid (Delta x) by using piecewise constant interpolation 1 cell -> 2x2 block
-#   - interpolation error not so important as this is an approximation anyway, and further smoothing will reduce them
-# * compute x = x_initial + Delta x
-# * few iterations on x to finalize
-#
-# how to move the matrix A:
-#   - algebraic multigrid: A' = RAP
-#   - geometric multigrid: reconstruct A for the new grid size, normally more expensive and memory consuming but
-#       in our case we dont want to explicitly construct the matrix A at all
-#       and only define how to apply A and to apply a gauss seidel sweep
-#       hence A is the same except for changing lattice constants dx and dy
-
 using Statistics
 using PyPlot
 using LinearAlgebra
@@ -186,8 +132,12 @@ function multi_grid(fine_Nx, fine_Ny)
     residuals = map(zeros, grid_sizes)
     grid_index = nlevels # start with the finest grid
 
-    # we use geometric multigrid bc its easy in this case as we never construct the matrix explicitly
-    # and only apply it on the grid / perform a gauss-seidel sweep
+    # how to move the matrix A:
+    #   - algebraic multigrid: A' = RAP
+    #   - geometric multigrid: reconstruct A for the new grid size, normally more expensive and memory consuming but
+    #       in our case we dont want to explicitly construct the matrix A at all
+    #       and only define how to apply A and to apply a gauss seidel sweep
+    #       hence A is the same except for changing lattice constants dx and dy
     iteration = 0
     while true
         for multigrid_direction in multigrid_directions
