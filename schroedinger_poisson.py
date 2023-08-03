@@ -38,14 +38,14 @@ def rhs(t, psi_hat):
 sol = solve_ivp(rhs, (0, tspan), fft(psi0), method="BDF", rtol=1e-5, atol=1e-5)
 psi_final = ifft(sol.y[:, -1])
 
-psi_final_free = ifft(np.exp(-1j * tspan * k**2 / (2*m) * fft(psi0)))
+psi_final_free = ifft(np.exp(-1j * tspan * k**2 / (2*m) * fft(psi0)))[1:]
 
 plt.figure()
-plt.plot(x, psi0, label="initial")
-plt.plot(x, psi_final, label=f"final {tspan = }")
-plt.plot(x, psi_final_free, label="final free solution")
+plt.plot(x, np.abs(psi0)**2, label="initial")
+plt.plot(x, np.abs(psi_final)**2, label=f"final {tspan = }")
+plt.plot(x[1:], np.abs(psi_final_free)**2, label="final free solution")
 plt.xlabel("x")
-plt.ylabel("psi(x)")
+plt.ylabel("|psi(x)|^2")
 plt.title("Schroedinger Poisson Equation")
 plt.legend()
 plt.show()
