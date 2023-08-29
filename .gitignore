@@ -10,6 +10,6 @@
 __pycache__
 *.dat
 *.csv
-*.txt
 *.bmp
 .vscode
+Manifest.toml

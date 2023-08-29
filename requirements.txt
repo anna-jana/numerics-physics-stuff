@@ -1,0 +1,11 @@
+matplotlib
+numba
+numpy
+scipy
+tqdm
+astropy
+sympy
+pandas
+pygame
+rebound
+vegas
