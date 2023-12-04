@@ -41,6 +41,11 @@ function LinearAlgebra.inv(U::SU3)
     return SU3(u_new, v_new)
 end
 
+function LinearAlgebra.tr(U::SU3)
+    w = get_last_row(U)
+    return U.u[1] + U.v[2] + w[3]
+end
+
 function *(U::SU3, V::SU3)
     ans = to_matrix(U) * to_matrix(V)
     return SU3(ans[1, :], ans[2, :])
@@ -91,7 +96,7 @@ Base.@kwdef mutable struct GluoDynamicsLattice
     U::Array{SU3,5}
     # neighbors (4D index) for each side in the 4D lattice (2*4 per side)
     stable_indicies::Array{CartesianIndex{5},7}
-    # coupling constant
+    # inverse coupling constant
     beta::Float64
     # reproject every nth iterations
     reproject_every::Int
@@ -106,17 +111,6 @@ Base.@kwdef mutable struct GluoDynamicsLattice
     epsilon::Float64
 end
 
-################################# io ############################
-function save_simulation_state(filename, s::GluoDynamicsLattice)
-    @info "saving simulation state to $filename"
-    save_object(filename, s)
-end
-
-function load_simulation_state(filename)::GluoDynamicsLattice
-    @info "loading simulation state from $filename"
-    return load_object(filename)
-end
-
 ############################## links ############################
 # index into the link variables (gluon field)
 function add_offset!(coord::Vector{Int}, signed_direction::Int, dims::Vector{Int})
@@ -126,7 +120,7 @@ function add_offset!(coord::Vector{Int}, signed_direction::Int, dims::Vector{Int
 end
 
 function get_link_index(coord, signed_direction, offsets, dims)
-    coord = copy(coord)
+    coord = collect(Tuple(coord)) # CartesianIndex -> Array
     for off in offsets
         add_offset!(coord, off, dims)
     end
@@ -142,18 +136,17 @@ function generate_stable_indicies(N, Nt)
     @info "setting up stable indicies"
     dims = [N, N, N, Nt]
     stable_indicies = Array{CartesianIndex{5}}(undef, N, N, N, Nt, 4, 3, 6)
-    for nt in 1:Nt, nz in 1:N, ny in 1:N, nx in 1:N # each lattice location
-        n = [nx, ny, nz, nt]
+    for n in CartesianIndices((N, N, N, Nt)) # each lattice location
         for mu in 1:4 # link direction
             nth = 1
             for nu in 1:4 # other direction of the placett
                 if mu != nu
-                    stable_indicies[n..., mu, nth, 1] = get_link_index(n, nu, [mu], dims)
-                    stable_indicies[n..., mu, nth, 2] = get_link_index(n, -mu, [nu, mu], dims)
-                    stable_indicies[n..., mu, nth, 3] = get_link_index(n, -nu, [nu], dims)
-                    stable_indicies[n..., mu, nth, 4] = get_link_index(n, -nu, [mu], dims)
-                    stable_indicies[n..., mu, nth, 5] = get_link_index(n, -mu, [-nu, mu], dims)
-                    stable_indicies[n..., mu, nth, 6] = get_link_index(n, nu, [-nu], dims)
+                    stable_indicies[n, mu, nth, 1] = get_link_index(n, nu, [mu], dims)
+                    stable_indicies[n, mu, nth, 2] = get_link_index(n, -mu, [nu, mu], dims)
+                    stable_indicies[n, mu, nth, 3] = get_link_index(n, -nu, [nu], dims)
+                    stable_indicies[n, mu, nth, 4] = get_link_index(n, -nu, [mu], dims)
+                    stable_indicies[n, mu, nth, 5] = get_link_index(n, -mu, [-nu, mu], dims)
+                    stable_indicies[n, mu, nth, 6] = get_link_index(n, nu, [-nu], dims)
                     nth += 1
                 end
             end
@@ -225,9 +218,12 @@ end
 ######################### mc algorithm ########################
 function mc_step!(s::GluoDynamicsLattice, i::CartesianIndex{5})
     # metropolis for a first test
+    # use a random step
     X = rand(s.choices)
     U_new = X * s.U[i]
+    # compute action difference for acceptance propability
     Delta_S = calc_action_diff(s, i, U_new)
+    # accept
     p = rand()
     if p < exp(-Delta_S)
         s.U[i] = U_new
@@ -243,40 +239,79 @@ end
 
 ######################### observables ########################
 function eval_polyakov_loop(s::GluoDynamicsLattice, n::CartesianIndex{3})
-    return prod(s.U[n, nt, 4] for nt in 1:s.Nt)
+    return tr(prod(s.U[n, nt, 4] for nt in 1:s.Nt))
 end
 
-function eval_all_polyakov_loops(s::GluoDynamicsLattice)
+function compute_polykov_correlator(s::GluoDynamicsLattice)
     @info "polyako loops"
-    for nz in 1:s.N, ny in 1:s.N, nx in 1:s.N
-        eval_polyakov_loop(s, CartesianIndex(nx, ny, nz))
+    # eval each polykov loop
+    P = [eval_polyakov_loop(s, n) for n in CartesianIndices((s.N, s.N, s.N))]
+    # compute their correlator as a histogram
+    # only the distance between the points matters bc of translation invariance
+    hist = Dict{Int, Complex{Float64}}()
+    counts = Dict{Int, Int}()
+    for n in CartesianIndices(P)
+        for m in CartesianIndices(P)
+            d2 = (n[1] - m[1])^2 +  (n[2] - m[2])^2 + (n[3] - m[3])^2
+            if !haskey(hist, d2)
+                hist[d2] = 0.0 + 0.0im
+                counts[d2] = 0
+            end
+            hist[d2] += P[n] * P[m]'
+            counts[d2] += 1
+        end
     end
+    return hist
 end
 
 ##################### the main mc loop #########################
-function main_loop!(s::GluoDynamicsLattice, nsteps, evaluate, eval_every)
+function load_simulation_state(filename)::GluoDynamicsLattice
+    @info "loading simulation state from $filename"
+    return load_object(filename)
+end
+
+function main_loop!(s::GluoDynamicsLattice, nsteps, evaluate, eval_every; info_every_secs = 1)
     @info "running simulation"
-    info_every = 100
-    dataseries = []
-    for _ in 1:nsteps
-        if s.step % info_every == 0
-            @info "step = $(s.step)"
-        end
-        if s.step % s.reproject_every == 0
-            map!(reproject_su3, s.U, s.U)
-        end
-        if s.step % s.new_choices_every == 0
-            s.choices = generate_possible_mc_steps(s.rng, s.nchoices, s.epsilon)
-        end
-        mc_sweep!(s)
-        if evaluate && s.step % eval_every == 0
-            @info "evaluating observables"
-            data = eval_all_polyakov_loops(s)
-            push!(dataseries, (s.step, data))
+    filename_polykov = "polyakov_loops.jld"
+    @info "saving dataseries of polykov loops in $filename_polykov"
+    jldopen(filename_polykov, "w") do f
+        # last time we printed loop update (step) info
+        last_info = time()
+        # main mc loop
+        for step in 1:nsteps
+            now = time()
+            if abs(last_info - now) > info_every_secs
+                # use the step of this run, so we can watch the progress
+                @info "step = $step / $nsteps"
+                # restart timer for step printing
+                last_info = now
+            end
+            # here we use the total step (for reproducablity)
+            # make sure that the su3 field stays in su3
+            if s.step % s.reproject_every == 0
+                map!(reproject_su3, s.U, s.U)
+            end
+            # here we use the total step (for reproducablity)
+            # new possible mc steps
+            if s.step % s.new_choices_every == 0
+                s.choices = generate_possible_mc_steps(s.rng, s.nchoices, s.epsilon)
+            end
+            # apply one mc sweep (touch all lattcie sides/links)
+            mc_sweep!(s)
+            # here we use the total step (for reproducablity)
+            if evaluate && s.step % eval_every == 0
+                @info "evaluating observables"
+                polyakov_loop_correlator = compute_polykov_correlator(s)
+                # save computed progress to disk
+                write(f, "step$(s.step)", polyakov_loop_correlator)
+            end
         end
     end
     @info "done running simulation"
-    return dataseries
+    # saving the final simulation state for restarts
+    filename_simulation = "simulation.jld"
+    @info "saving simulation state to $filename_simulation"
+    save_object(filename_simulation, s)
 end
 
 end
@@ -284,6 +319,5 @@ end
 
 function test()
     s = GluoDynamics.GluoDynamicsLattice(8_5_1996, 10, 10, 1000, 1.0, 100, 100, 0.01)
-    GluoDynamics.main_loop!(s, 10^3, true, 100)
-    GluoDynamics.save_simulation_state("simulation.jld", s)
+    GluoDynamics.main_loop!(s, 200, true, 100)
 end
