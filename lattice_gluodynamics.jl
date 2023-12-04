@@ -4,8 +4,8 @@ using Random
 using PyPlot
 using StaticArrays
 using LinearAlgebra
-using HDF5
 import Base.*
+using JLD2
 
 ###################### efficient SU3 type ######################
 struct SU3
@@ -43,7 +43,7 @@ end
 
 function *(U::SU3, V::SU3)
     ans = to_matrix(U) * to_matrix(V)
-    return SU3(ans[1,:], ans[2,:])
+    return SU3(ans[1, :], ans[2, :])
 end
 
 function reproject_su3(U::SU3)::SU3
@@ -59,20 +59,20 @@ const pauli = [
     [1 0; 0 -1],
 ]
 
-function random_su2_to_close_to_1(epsilon)
-    r = rand(3) .- 1.0
+function random_su2_to_close_to_1(rng, epsilon)
+    r = rand(rng, 3) .- 1.0
     x = epsilon * r / norm(r)
-    x0 = rand((-1,1)) * sqrt(1 - epsilon^2)
+    x0 = rand(rng, (-1, 1)) * sqrt(1 - epsilon^2)
     return x0 * id + sum(im * x[i] * pauli[i] for i in 1:3)
 end
 
-function random_su3_close_to_1(epsilon)::SU3
-    r = random_su2_to_close_to_1(epsilon)
-    s = random_su2_to_close_to_1(epsilon)
-    t = random_su2_to_close_to_1(epsilon)
-    R = SMatrix{3,3}(r[1,1], r[2,1], 0, r[1,2], r[2,2], 0, 0, 0, 1)
-    S = SMatrix{3,3}(s[1,1], 0, s[2,1], 0, 1, 0, s[1,2], 0, s[2,2])
-    T = SMatrix{3,3}(1, 0, 0, 0, t[1,1], t[2,1], 0, t[1,2], t[2,2])
+function random_su3_close_to_1(rng, epsilon)::SU3
+    r = random_su2_to_close_to_1(rng, epsilon)
+    s = random_su2_to_close_to_1(rng, epsilon)
+    t = random_su2_to_close_to_1(rng, epsilon)
+    R = SMatrix{3,3}(r[1, 1], r[2, 1], 0, r[1, 2], r[2, 2], 0, 0, 0, 1)
+    S = SMatrix{3,3}(s[1, 1], 0, s[2, 1], 0, 1, 0, s[1, 2], 0, s[2, 2])
+    T = SMatrix{3,3}(1, 0, 0, 0, t[1, 1], t[2, 1], 0, t[1, 2], t[2, 2])
     X = R * S * T
     u = X[1, :]
     v = X[2, :]
@@ -81,6 +81,10 @@ end
 
 ######################### simulation type ########################
 Base.@kwdef mutable struct GluoDynamicsLattice
+    # size of the time direction
+    Nt::Int
+    # size of the space directions
+    N::Int
     # mc step
     step::Int
     # 4D lattice (1 euclidian time direction, 3 space directions) + 4 link variables per side
@@ -92,44 +96,25 @@ Base.@kwdef mutable struct GluoDynamicsLattice
     # reproject every nth iterations
     reproject_every::Int
     # possible mc steps to choose from
+    nchoices::Int
     choices::Vector{SU3}
     # regenerate possible random choices
     new_choices_every::Int
-    # seed of the random number generator
-    # the default prng is Xoshiro256++ which has a periode of 2^256 − 1 which is sufficient
-    seed::Int
+    # the prng is Xoshiro256++ which has a periode of 2^256 − 1 which is sufficient
+    rng::Xoshiro
+    # small number for generation of mc step proposals (which should be close to unity)
     epsilon::Float64
 end
 
 ################################# io ############################
 function save_simulation_state(filename, s::GluoDynamicsLattice)
-    h5open(filename, "w") do f
-        f["seed"] = s.seed
-        f["U"] = s.U
-        f["beta"] = s.beta
-        f["reproject_every"] = s.reproject_every
-        f["new_choices_every"] = s.new_choices_every
-        f["step"] = s.step
-        f["n"] = div(length(s.choices), 2)
-        f["epsilon"] = s.epsilon
-    end
+    @info "saving simulation state to $filename"
+    save_object(filename, s)
 end
 
 function load_simulation_state(filename)::GluoDynamicsLattice
-    return h5open(filename, "r") do f
-        n = f["n"]
-        epsilon = f["epsilon"]
-        GluoDynamicsLattice(
-            step=f["step"],
-            seed=f["seed"],
-            U=f["U"],
-            beta=f["beta"],
-            reproject_every=f["reproject_every"],
-            new_choices_every=f["new_choices_every"],
-            epsilon=epsilon,
-            choices=generate_possible_mc_steps(n, epsilon),
-        )
-    end
+    @info "loading simulation state from $filename"
+    return load_object(filename)
 end
 
 ############################## links ############################
@@ -154,10 +139,11 @@ end
 
 ########################## computing the action ##################
 function generate_stable_indicies(N, Nt)
+    @info "setting up stable indicies"
     dims = [N, N, N, Nt]
     stable_indicies = Array{CartesianIndex{5}}(undef, N, N, N, Nt, 4, 3, 6)
-    for it in 1:Nt, iz in 1:N, iy in 1:N, ix in 1:N # each lattice location
-        n = [ix, iy, iz, it]
+    for nt in 1:Nt, nz in 1:N, ny in 1:N, nx in 1:N # each lattice location
+        n = [nx, ny, nz, nt]
         for mu in 1:4 # link direction
             nth = 1
             for nu in 1:4 # other direction of the placett
@@ -201,7 +187,7 @@ function calc_action_diff(s::GluoDynamicsLattice, i::CartesianIndex{5}, U_new::S
     U = to_matrix(s.U[i])
     U_new_matrix = to_matrix(U_new)
     # TODO: make this more efficient
-    return - s.beta / N * real(tr((U_new_matrix - U) * A))
+    return -s.beta / N * real(tr((U_new_matrix - U) * A))
 end
 
 ############################ initialization ########################
@@ -211,23 +197,27 @@ function cold_start(N, Nt)
 end
 
 # generate mc steps
-function generate_possible_mc_steps(n, epsilon)::Vector{SU3}
-    choices_half = [random_su3_close_to_1(epsilon) for _ in 1:n]
+function generate_possible_mc_steps(rng, n, epsilon)::Vector{SU3}
+    choices_half = [random_su3_close_to_1(rng, epsilon) for _ in 1:n]
     inv_half = inv.(choices_half)
     return vcat(choices_half, inv_half)
 end
 
-function GluoDynamicsLattice(s, N, Nt, nchoices, beta, reproject_every, new_choices_every, epsilon)
-    Random.seed!(s)
+function GluoDynamicsLattice(seed, N, Nt, nchoices, beta, reproject_every, new_choices_every, epsilon)
+    @info "building new lattice simulation $N^3*$Nt with seed $seed @ beta = $beta"
+    rng = Xoshiro(seed)
     return GluoDynamicsLattice(
+        Nt=Nt,
+        N=N,
         step=0,
         U=cold_start(N, Nt),
         stable_indicies=generate_stable_indicies(N, Nt),
         beta=beta,
         reproject_every=reproject_every,
-        choices=generate_possible_mc_steps(nchoices, epsilon),
+        nchoices=nchoices,
+        choices=generate_possible_mc_steps(rng, nchoices, epsilon),
         new_choices_every=new_choices_every,
-        seed=s,
+        rng=rng,
         epsilon=epsilon,
     )
 end
@@ -245,37 +235,47 @@ function mc_step!(s::GluoDynamicsLattice, i::CartesianIndex{5})
 end
 
 function mc_sweep!(s::GluoDynamicsLattice)
-    for i in CartesianIndices(s.U)
-        mc_step!(s, i)
+    for n in CartesianIndices(s.U)
+        mc_step!(s, n)
     end
+    s.step += 1
 end
 
 ######################### observables ########################
-function eval_polyakov_loop(s::GluoDynamicsLattice)
-    # TODO
+function eval_polyakov_loop(s::GluoDynamicsLattice, n::CartesianIndex{3})
+    return prod(s.U[n, nt, 4] for nt in 1:s.Nt)
 end
 
 function eval_all_polyakov_loops(s::GluoDynamicsLattice)
-    # TODO
+    @info "polyako loops"
+    for nz in 1:s.N, ny in 1:s.N, nx in 1:s.N
+        eval_polyakov_loop(s, CartesianIndex(nx, ny, nz))
+    end
 end
 
 ##################### the main mc loop #########################
-function main_loop!(s::GluoDynamicsLattice, nsteps, evaluate)
+function main_loop!(s::GluoDynamicsLattice, nsteps, evaluate, eval_every)
+    @info "running simulation"
+    info_every = 100
     dataseries = []
-    for step in nsteps
-        if step % s.reproject_every == 0
+    for _ in 1:nsteps
+        if s.step % info_every == 0
+            @info "step = $(s.step)"
+        end
+        if s.step % s.reproject_every == 0
             map!(reproject_su3, s.U, s.U)
         end
-        if step % s.new_choices_every == 0
-            s.choices = generate_possible_mc_steps(div(length(s.choices), 2),
-                                                   s.epsilon)
+        if s.step % s.new_choices_every == 0
+            s.choices = generate_possible_mc_steps(s.rng, s.nchoices, s.epsilon)
         end
         mc_sweep!(s)
-        if evaluate
+        if evaluate && s.step % eval_every == 0
+            @info "evaluating observables"
             data = eval_all_polyakov_loops(s)
-            push!(dataseries, (step, data))
+            push!(dataseries, (s.step, data))
         end
     end
+    @info "done running simulation"
     return dataseries
 end
 
@@ -283,6 +283,7 @@ end
 
 
 function test()
-    gdl = GluoDynamics.GluoDynamicsLattice(42, 10, 10, 1000, 1.0, 100, 100, 0.01)
-    GluoDynamics.main_loop!(gdl, 10^3, false)
+    s = GluoDynamics.GluoDynamicsLattice(8_5_1996, 10, 10, 1000, 1.0, 100, 100, 0.01)
+    GluoDynamics.main_loop!(s, 10^3, true, 100)
+    GluoDynamics.save_simulation_state("simulation.jld", s)
 end
