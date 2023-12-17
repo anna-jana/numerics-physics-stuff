@@ -1,9 +1,11 @@
 using LsqFit
 using Statistics
 
+export autocorr, bootstrap, data_blocking, int_autocorr_time, jackknife, exp_autocorr_time, normalized_autocorr
+
 ############################ time series analysis #############################
 function autocorr(xs)
-    return map(0:length(xs)) do t
+    return map(0:length(xs) - 1) do t
         S1 = @view xs[1:end-t]
         S2 = @view xs[t+1:end]
         return mean(@. S1 * S2) - mean(S1) * mean(S2)
@@ -22,9 +24,9 @@ end
 function exp_autocorr_time(xs)
     ts = 0:length(xs)-1
     Lambda = normalized_autocorr(xs)
-    model = (x, p) -> exp(x / p[1])
-    fit = curve_fit(model, ts, Lambda, [1.0])
-    return coef(fit)
+    model = (x, p) -> exp.(x ./ p[1])
+    fit = curve_fit(model, ts, Lambda, [(length(xs)-1.0)/2.0])
+    return fit.param
 end
 
 function bootstrap(xs, K)
