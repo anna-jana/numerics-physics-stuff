@@ -2,21 +2,18 @@ module GluoDynamics
 
 using Random
 using StaticArrays
-using PyPlot
 using LinearAlgebra
 using JLD2
 using FileIO
 using Test
 
-include("su3.jl")
-include("timeseries.jl")
-
 export GluoDynamicsLattice, add_offset!, advance!, cold_start, compute_action, compute_action_diff
 export compute_action_diff_naive, compute_stable, cyclic_dist_squared, cyclic_dist_squared_1d, eval_plaquetts
 export eval_polyakov_loop, generate_plaquett_indicies, generate_possible_mc_steps, generate_stable_indicies
 export get_link_index, info_every_secs, mc_step_metropolis!, mc_sweep_metropolis!, ndims
-export update_polyakov_correlator!, warm_start, real_of_mul, run_simple_simulation!
-export converge!
+export update_polyakov_correlator!, warm_start, real_of_mul, Polyakov
+
+include("su3.jl")
 
 ######################### simulation type ########################
 const ndims = 4
@@ -28,9 +25,10 @@ Base.@kwdef mutable struct GluoDynamicsLattice
     N::Int
     # mc step
     step::Int
-    # 4D lattice (4 link variables per side) + (1 euclidian time direction, 3 space directions)
+    # lattice for the gluon field (ndims link variables per side) + (1 euclidian time direction, ndims - 1 space directions)
     U::Array{SU3,ndims + 1}
-    # neighbors (4D index) for each side in the 4D lattice (2*4 per side)
+    # stable neighbors. shape: nth part of the stable ((ndims - 1) * 2) x
+    # index of direction index nu=1..ndims nu != mu x direction index mu = 1..ndims x N^(ndims - 1) x Nt
     stable_indicies::Array{CartesianIndex{ndims + 1},ndims + 3}
     # inverse coupling constant
     beta::Float64
@@ -47,7 +45,7 @@ Base.@kwdef mutable struct GluoDynamicsLattice
     rng::Xoshiro
     # small number for generation of mc step proposals (which should be close to unity)
     epsilon::Float64
-    # indicies for evlaulation of the plaquett observable
+    # indicies for evlaulation of the plaquett observable, shape like stable_indicies
     plaquett_indicies::Array{CartesianIndex{ndims + 1},ndims + 3}
 end
 
@@ -97,7 +95,7 @@ function generate_stable_indicies(N, Nt)
 end
 
 # compute the action difference when changing one link
-@inline function compute_stable(s::GluoDynamicsLattice, i::CartesianIndex{5})
+@inline function compute_stable(s::GluoDynamicsLattice, i::CartesianIndex{ndims + 1})
     A = zero(SMatrix{3,3,ComplexF64})
     @inbounds for nu_i in 1:ndims-1
         A += to_matrix(s.U[s.stable_indicies[1, nu_i, i]] *
@@ -126,7 +124,7 @@ end
     return s.action_prefactor * trace
 end
 
-@inline function compute_action(s::GluoDynamicsLattice)
+function compute_action(s::GluoDynamicsLattice)
     unity = to_matrix(one(SU3))
     S_atomic = Threads.Atomic{Float64}(0.0)
     Threads.@threads for n in CartesianIndices(s.U[1, :, :, :, :])
@@ -148,7 +146,7 @@ end
     return s.action_prefactor * S
 end
 
-@inline function compute_action_diff_naive(s::GluoDynamicsLattice, i::CartesianIndex{ndims + 1}, U_new::SU3)
+function compute_action_diff_naive(s::GluoDynamicsLattice, i::CartesianIndex{ndims + 1}, U_new::SU3)
     S = compute_action(s)
     U = s.U[i]
     s.U[i] = U_new
@@ -176,7 +174,6 @@ function generate_plaquett_indicies(N, Nt)
 end
 
 function eval_plaquetts(s::GluoDynamicsLattice)
-    @info "evaluating plaquetts"
     P_atomic = Threads.Atomic{Float64}(0.0)
     Threads.@threads for n in CartesianIndices(s.U[1, :, :, :, :])
         @inbounds for mu in 1:ndims
@@ -195,11 +192,11 @@ function eval_plaquetts(s::GluoDynamicsLattice)
     return P / (6 * s.N^3 * s.Nt) # normalization depends on ndims
 end
 
+# state for the evaluation of polyakov loops
 Base.@kwdef mutable struct Polyakov
-    # state for the evaluation of polyakov loops
     polyakov::Array{ComplexF64,ndims - 1}
-    polyakov_corr::Vector{Vector{Float64}}
-    # polyakov_corr_single::Vector{Float64}
+    polyakov_corr::Vector{Float64}
+    sums::Vector{Float64}
     counts::Vector{Int}
 end
 
@@ -207,8 +204,9 @@ function Polyakov(s::GluoDynamicsLattice)
     polyakov_corr_size = cld((ndims - 1) * (s.N - 1)^2, 2)
     return Polyakov(
         polyakov=Array{Float64}(undef, s.N, s.N, s.N),
-        polyakov_corr=Vector{Float64}[],
-        counts=zeros(Int, polyakov_corr_size),
+        polyakov_corr=zeros(polyakov_corr_size),
+        sums=Array{Float64}(undef, polyakov_corr_size),
+        counts=Array{Int}(undef, polyakov_corr_size),
     )
 end
 
@@ -225,7 +223,6 @@ end
 end
 
 function update_polyakov_correlator!(s::GluoDynamicsLattice, o::Polyakov)
-    @info "evaluating polyako loops"
     # eval each polyakov loop
     Threads.@threads for n in CartesianIndices((s.N, s.N, s.N))
         @inbounds o.polyakov[n] = eval_polyakov_loop(s, n)
@@ -233,21 +230,18 @@ function update_polyakov_correlator!(s::GluoDynamicsLattice, o::Polyakov)
     # compute their correlator as a histogram
     # only the distance between the points matters bc of translation invariance
     fill!(o.counts, 0)
-    push!(o.polyakov_corr, zeros(length(o.counts)))
+    fill!(o.sums, 0.0)
     @inbounds for n in CartesianIndices(o.polyakov)
         for m in CartesianIndices(o.polyakov)
             d2 = cyclic_dist_squared(n, m, s.N)
             val = o.polyakov[n] * o.polyakov[m]'
-            # if !isapprox(val, 0.0, atol=1e-10)
-            #     @warn "imaginary part of polyakov loop correlator is $(imag(val))"
-            # end
-            o.polyakov_corr[end][d2] += real(val)
+            o.sums[d2] += real(val)
             o.counts[d2] += 1
         end
     end
     @inbounds for i in eachindex(o.counts)
         if o.counts[i] != 0
-            o.polyakov_corr[end][i] /= o.counts[i]
+            o.polyakov_corr[i] += o.sums[i] / o.counts[i]
         end
     end
 end
@@ -266,12 +260,12 @@ function generate_possible_mc_steps(rng, n, epsilon)
 end
 
 function GluoDynamicsLattice(seed, N, Nt, nchoices, beta, reproject_every, new_choices_every, epsilon; use_cold_start=true)
-    @info "building new lattice simulation $N^3*$Nt with seed $seed @ beta = $beta"
+    @info "building new lattice simulation $N^$(ndims - 1)*$Nt with seed $seed @ beta = $beta"
     rng = Xoshiro(seed)
     return GluoDynamicsLattice(
         Nt=Nt,
         N=N,
-        step=0,
+        step=1,
         U=use_cold_start ? cold_start(N, Nt) : warm_start(rng, epsilon, N, Nt),
         stable_indicies=generate_stable_indicies(N, Nt),
         beta=beta,
@@ -291,8 +285,7 @@ function GluoDynamicsLattice(N::Int, Nt::Int, beta::Real)
 end
 
 ######################### mc algorithm ########################
-@inline function mc_step_metropolis!(s::GluoDynamicsLattice, i::CartesianIndex{5})
-    # metropolis for a first test
+@inline function mc_step_metropolis!(s::GluoDynamicsLattice, i::CartesianIndex{ndims + 1})
     # use a random step
     X = rand(s.choices)
     @inbounds U = s.U[i]
@@ -307,85 +300,14 @@ end
 end
 
 function mc_sweep_metropolis!(s::GluoDynamicsLattice)
+    # do a single metropolis step for each lattice link
     for n in CartesianIndices(s.U)
         mc_step_metropolis!(s, n)
     end
     s.step += 1
 end
 
-##################### the main mc loop #########################
-const info_every_secs = 1
-
-function advance!(s::GluoDynamicsLattice, nsteps)
-    # last time we printed loop update (step) info
-    last_info = time()
-    # main mc loop
-    for step in 1:nsteps
-        now = time()
-        if abs(last_info - now) > info_every_secs
-            # use the step of this run, so we can watch the progress
-            @info "step = $step / $nsteps, total_step = $(s.step)"
-            # restart timer for step printing
-            last_info = now
-        end
-        # here we use the total step (for reproducablity)
-        # make sure that the su3 field stays in su3
-        if s.step % s.reproject_every == 0
-            map!(reproject_su3, s.U, s.U)
-        end
-        # here we use the total step (for reproducablity)
-        # new possible mc steps
-        if s.step % s.new_choices_every == 0
-            s.choices = generate_possible_mc_steps(s.rng, s.nchoices, s.epsilon)
-        end
-        # apply one mc sweep (touch all lattcie sides/links)
-        mc_sweep_metropolis!(s)
-    end
-end
-
-function equilibrate!(s::GluoDynamicsLattice, plaquetts, nsteps, discard)
-    for i in 1:nsteps
-        @info "step $i / $nsteps"
-        advance!(s, discard + 1)
-        push!(plaquetts, eval_plaquetts(s))
-    end
-end
-
-function run_simple_simulation!(s::GluoDynamicsLattice;
-    equilibrating_steps=50, discarded_updates=1, nsamples=200, fileprefix="",
-)
-    @info "running simulation"
-
-    @info "equilibrating for $equilibrating_steps steps"
-    advance!(s, equilibrating_steps)
-
-    @info "collecting data"
-    poly = Polyakov(s)
-    plaquetts = Float64[]
-    for nth_sample in 1:nsamples
-        # discard step inbetween observable evaluations
-        @info "collecting sample $nth_sample / $nsamples"
-        advance!(s, discarded_updates + 1)
-
-        # observables
-        @info "evaluating observables"
-        push!(plaquetts, eval_plaquetts(s))
-        update_polyakov_correlator!(s, poly)
-    end
-    @info "done running simulation"
-
-    filename_polyakov="$(fileprefix)polyakov_loops$(s.beta).jld"
-    filename_plaquetts="$(fileprefix)plaquetts$(s.beta).jld"
-    filename_simulation="$(fileprefix)simulation$(s.beta).jld"
-    @info "saving dataseries of plaquetts in $filename_plaquetts"
-    save_object(filename_plaquetts, plaquetts)
-    @info "saving dataseries of polyakov loops in $filename_polyakov"
-    save_object(filename_polyakov, poly.polyakov_corr)
-    # saving the final simulation state for restarts
-    @info "saving simulation state to $filename_simulation"
-    save_object(filename_simulation, s)
-end
-
+############################ testing ###############################
 function test()
     @testset verbose = true "gluodynamics" begin
         @testset "su3" begin
@@ -427,31 +349,118 @@ function test()
     return nothing
 end
 
+##################### the main mc loop #########################
+const info_every_secs = 1
+
+function advance!(s::GluoDynamicsLattice, nsteps, name="")
+    # last time we printed loop update (step) info
+    last_info = time()
+    # main mc loop
+    for step in 1:nsteps
+        now = time()
+        if now - last_info > info_every_secs
+            # use the step of this run, so we can watch the progress
+            @info "$name, step = $step / $nsteps, total_step = $(s.step)"
+            # restart timer for step printing
+            last_info = now
+        end
+        # here we use the total step (for reproducablity)
+        # make sure that the su3 field stays in su3
+        if s.step % s.reproject_every == 0
+            map!(reproject_su3, s.U, s.U)
+        end
+        # here we use the total step (for reproducablity)
+        # new possible mc steps
+        if s.step % s.new_choices_every == 0
+            s.choices = generate_possible_mc_steps(s.rng, s.nchoices, s.epsilon)
+        end
+        # apply one mc sweep (touch all lattcie sides/links)
+        mc_sweep_metropolis!(s)
+    end
+end
+
 end # module GluoDynamics
 
 using JLD2
 using PyPlot
 using LsqFit
 
-function main(run=false)
+include("timeseries.jl")
 
+function main()
+    # parameters
     beta = 1.0
     N = Nt = 10
-    if run
-        GluoDynamics.run_simple_simulation!(GluoDynamics.GluoDynamicsLattice(N, Nt, beta); equilibrating_steps=6000)
+
+    # equilibration
+    equilibrate_steps = 6000
+    nsamples = 200
+    discard = div(equilibrate_steps, nsamples)
+    if false
+        s = GluoDynamics.GluoDynamicsLattice(N, Nt, beta);
+        eq_plaquetts = Float64[]
+        last_info = time()
+        for i in 1:nsamples
+            now = time()
+            if now - last_info > GluoDynamics.info_every_secs
+                @info "equilibration step $i / $nsamples ($discard each)"
+            end
+            GluoDynamics.advance!(s, discard + 1)
+            push!(eq_plaquetts, GluoDynamics.eval_plaquetts(s))
+        end
+        save_object("eq_simulation$beta.jld", s)
+        save_object("eq_plaquetts$beta.jld", eq_plaquetts)
+    else
+        s = load_object("eq_simulation$beta.jld");
+        eq_plaquetts = load_object("eq_plaquetts$beta.jld");
+    end
+    if false
+        figure()
+        plot((1:length(eq_plaquetts)) .* discard, eq_plaquetts)
+        xlabel("mc step")
+        ylabel("plaquett tr(U_mu,nu)")
+        show()
     end
 
-    plaq = Float64[]
-    s  = GluoDynamics.GluoDynamicsLattice(N, Nt, beta);
-    GluoDynamics.converge!(s, plaq, 100, 10)
-    plot(plaq)
+    # measurements
+    poly = GluoDynamics.Polyakov(s);
+    plaquetts = Float64[]
+    discarded_updates = 1
+    nsamples = 2000
 
-    # analysis
-    plaq = load_object("plaquetts$beta.jld")
-
-    polyakov = load_object("polyakov_loops$beta.jld")
-    d2 = collect(1:length(polyakov[1]))
-    for p in polyakov
-        plot(log.(abs.(p[p.!=0.0])), ".k")
+    last_info = time()
+    for nth_sample in 1:nsamples
+        now = time()
+        if now - last_info > GluoDynamics.info_every_secs
+            @info "collecting sample $nth_sample / $nsamples"
+        end
+        # discard step inbetween observable evaluations
+        GluoDynamics.advance!(s, discarded_updates + 1)
+        # observables
+        if false
+            push!(plaquetts, GluoDynamics.eval_plaquetts(s))
+        end
+        GluoDynamics.update_polyakov_correlator!(s, poly)
     end
+
+    nruns = 3
+    p = poly.polyakov_corr ./ (nruns*nsamples)
+    d2 = collect(1:length(p))
+    ok = p .>= 0.0
+    plot(sqrt.(d2[ok]), -log.(p[ok]))
+
+    # saving the final simulation state for restarts and output data
+    filename_polyakov = "polyakov_loops$(s.beta).jld"
+    filename_plaquetts = "plaquetts$(s.beta).jld"
+    filename_simulation = "simulation$(s.beta).jld"
+    @info "saving dataseries of plaquetts in $filename_plaquetts"
+    @info "saving dataseries of polyakov loops in $filename_polyakov"
+    @info "saving simulation state to $filename_simulation"
+    save_object(filename_plaquetts, plaquetts)
+    save_object(filename_polyakov, poly.polyakov_corr)
+    save_object(filename_simulation, s)
+
+    # # analysis
+    # plaq = load_object("plaquetts$beta.jld")
+
 end
