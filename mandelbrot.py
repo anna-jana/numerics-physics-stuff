@@ -16,7 +16,7 @@ real = np.linspace(lower.real, upper.real, width)
 imag = np.linspace(lower.imag, upper.imag, height)
 c = real + 1j * imag[:, None]
 z = np.zeros(c.shape)
-steps = np.zeros(c.shape, dtype=np.int)
+steps = np.zeros(c.shape, dtype="int")
 
 for i in range(max_iterations):
     z = z**2 + c
@@ -26,6 +26,7 @@ stop = time.time()
 print("took:", stop - start, "seconds")
 
 plt.pcolormesh(real, imag, steps, cmap="RdGy")
+plt.gca().set_aspect("equal")
 plt.xlabel("Re")
 plt.ylabel("Im")
 plt.title("Mandelbrot Set")

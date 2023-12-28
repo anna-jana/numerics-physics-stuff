@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 def step(space):
     neighbor_count = sum(np.roll(space, (dr, dc), (0, 1)) for dr in (-1,0,1) for dc in (-1,0,1)) - space
-    return ((neighbor_count == 3) | (space & (neighbor_count == 2))).astype(np.int)
+    return ((neighbor_count == 3) | (space & (neighbor_count == 2))).astype("int")
 
 def show(space):
     for i in range(space.shape[0]):
@@ -13,7 +13,7 @@ def show(space):
     print("")
 
 if __name__ == "__main__":
-    space = np.zeros((5, 5), dtype=np.int)
+    space = np.zeros((5, 5), dtype="int")
     space[:3, :3] = np.array([[0, 0, 1],
                               [1, 0, 1],
                               [0, 1, 1]])

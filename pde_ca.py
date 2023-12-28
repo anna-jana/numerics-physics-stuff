@@ -34,7 +34,7 @@ particles = [
     #(40, -1),
     (150, -1),
 ]
-prev = np.zeros(SIZE, dtype=np.int)
+prev = np.zeros(SIZE, dtype="int")
 curr = prev.copy()
 for x, v in particles:
     prev[x : x + particle.size] = particle

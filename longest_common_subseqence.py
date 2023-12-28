@@ -13,7 +13,7 @@ def lcs_rec(s1, s2, n=None, m=None):
     return max(lcs_rec(s1, s2, n - 1, m), lcs_rec(s1, s2, n, m - 1), key=len)
 
 def lcs_dy_prog(s1, s2):
-    table = np.zeros((len(s1), len(s2)), dtype=np.int)
+    table = np.zeros((len(s1), len(s2)), dtype="int")
     def lookup(i, j):
         if i < 0 or j < 0:
             return 0

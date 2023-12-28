@@ -19,7 +19,7 @@ x = np.zeros(num_particles)
 y = np.zeros(num_particles)
 z = np.zeros(num_particles)
 
-absorped = np.zeros(num_particles, dtype=np.int)
+absorped = np.zeros(num_particles, dtype="int")
 history_length = np.zeros(num_particles)
 
 while not np.all(absorped):

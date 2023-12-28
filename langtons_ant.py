@@ -15,7 +15,7 @@ turn_left = { turn_right[d] : d for d in turn_right }
 def simulate_langtons_ant(steps=11000, rows=100, cols=100, direct=UP):
     row = rows // 2
     col = cols // 2
-    plane = np.zeros((rows, cols), dtype=np.int)
+    plane = np.zeros((rows, cols), dtype="int")
 
     for i in range(steps):
         direct = turn_right[direct] if plane[row, col] == WHITE else turn_left[direct]
