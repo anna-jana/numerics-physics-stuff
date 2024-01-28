@@ -36,7 +36,7 @@ function plot_control_example()
     K = default_K
     tau = default_tau
     tmax = 500.0
-    t_chaotic = trajectory(sys, tmax; Ttr=system_transit)
+    t_chaotic = trajectory(sys, tmax; Ttr=system_transit)[1]
     feedback_amplitude_vector = K.*v
     t_control = pyragas_control(sys, feedback_amplitude_vector, tau, tmax; system_transit=system_transit)
     dt = t_control.t[2] - t_control.t[1]

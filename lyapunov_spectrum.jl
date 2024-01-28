@@ -18,7 +18,7 @@ end
 sys = Systems.towel()
 
 function plot_map()
-    steps = trajectory(sys, 10000)
+    steps = trajectory(sys, 10000)[1]
     plot3D(steps[:, 1], steps[:, 2], steps[:, 3], ".", ms=0.5)
     #plot(steps[:, 1], steps[:, 2], ".", ms=0.5)
 end
@@ -55,7 +55,7 @@ function computer_lyapunov_spectrum_with_qr_discrete(dds, x0, T, N)
     Y_dds = DiscreteDynamicalSystem(g, y0, dds.p)
     lyapunov_spectrum = zeros(n)
     for i in 1:N
-        y = trajectory(Y_dds, T, y0)[end]
+        y = trajectory(Y_dds, T, y0)[1][end]
         x, Y = unpack(y)
         Q, R = qr(Y) # the problem is that julia doesn't return the decompostion, where R_jj > 0 forall j
 
