@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import root
 
 ################################ methods ###################################
 def forward_euler(f, y0, t):
@@ -76,6 +77,17 @@ def dormand_prince(f, y0, t):
         ys[i + 1, :] = dormand_prince_step(f, t[i], ys[i, :], t[i + 1] - t[i])
     return ys
 
+def implicit_euler(f, y0, t):
+    ys = np.zeros((t.size, y0.size))
+    ys[0, :] = y0
+    for i in range(len(t) - 1):
+        dt = t[i + 1] - t[i]
+        goal = lambda new_y: ys[i, :] + dt * f(t[i + 1], new_y) - new_y
+        res = root(goal, ys[i, :])
+        assert res.success
+        ys[i + 1, :] = res.x
+    return ys
+
 ################### test cases #####################
 
 ## harmonic oscillator
@@ -117,6 +129,7 @@ def test_harmonic_oscillator():
     test_harm("AB 2", ab2)
     test_harm("AB 3", ab3)
     test_harm("dormand prince", dormand_prince)
+    test_harm("implicit euler", implicit_euler)
 
     plt.subplot(2, 1, 1)
     plt.plot(t, exact_xs, "--", label="analytic")
@@ -163,6 +176,7 @@ def test_radioactive_decay():
     test_radio("AB 2", ab2)
     test_radio("AB 3", ab3)
     test_radio("dormand prince", dormand_prince)
+    test_radio("implicit euler", implicit_euler)
 
     plt.subplot(2, 1, 1)
     plt.plot(t, exact_xs, "--", label="analytic solution")
