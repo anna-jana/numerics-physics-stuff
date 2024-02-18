@@ -7,7 +7,7 @@ Lambda = 200
 k = np.linspace(2 * Lambda, 1e2*Lambda, 500)
 alpha_s = 1 / (beta0 * np.log(k**2 / Lambda**2))
 
-m = 1e-10
+m = 0.511
 alpha_e_0 = 1 / 137
 alpha_e = alpha_e_0 / (1 - alpha_e_0 / (3*np.pi) * np.log(k**2 / m**2))
 
