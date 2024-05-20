@@ -5,7 +5,7 @@ def H_to_t(H): return 1 / (2*H)
 def t_to_H(t): return 1 / (2*t)
 
 def rhs(t, u,  m1, m2, g):
-    H = H_to_t(t)
+    H = t_to_H(t)
     phi1, phi2, phi1_dot, phi2_dot = u
     phi1_dot_dot = - 3 * H * phi1_dot - m1**2 * phi1 - g * phi1 * phi2**2
     phi2_dot_dot =  - 3 * H * phi2_dot - m2**2 * phi2 - g * phi2 * phi1**2
@@ -32,6 +32,6 @@ legend()
 xlabel(r"$t$ / a.u.")
 ylabel("field / initial value")
 title(r"$V = \frac{m_1^2}{2} \phi_1^2 + \frac{m_2^2}{2} \phi_2^2 + \frac{g}{2} \phi_1^2 \phi_2^2$" +
-      f"\n\$m_1 = \$ {m1}, \$m_2 = \$ {m2}, g = {g}, \$\\phi_1(t_0)\$ = {f1}, \$\\phi_2(t_0)\$ = {f2}")
+      f"\n$m_1 = $ {m1}, $m_2 = $ {m2}, g = {g}, $\\phi_1(t_0)$ = {f1}, $\\phi_2(t_0)$ = {f2}")
 tight_layout()
 show()
