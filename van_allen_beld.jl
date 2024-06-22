@@ -1,6 +1,7 @@
 using LinearAlgebra
 using PyPlot
 using OrdinaryDiffEq
+using StaticArrays
 
 function compute_magnetic_dipole_field(x, m)
     mu0 = 1.0
@@ -10,7 +11,7 @@ end
 
 function rhs(y, p, t)
     q, m, m_earth = p
-    x, v = y[1:3], y[4:end]
+    x, v = SVector(y[1], y[2], y[3]), SVector(y[4], y[5], y[6])
     B = compute_magnetic_dipole_field(x, m_earth)
     a = q / m * cross(v, B)
     return vcat(v, a)
@@ -19,17 +20,17 @@ end
 v_parallel_0 = 1e-8
 v_orthogonal_0 = 1e-6
 M = 10.0
-m_earth = [0.0, 0.0, M]
+m_earth = SVector(0.0, 0.0, M)
 q = 1.0
 m = 1.0
 L = 5.0
 tmax = 1e7
-x0 = [L, 0.0, 0.0,]
-v0 = [0.0, v_orthogonal_0, v_parallel_0]
+x0 = SVector(L, 0.0, 0.0)
+v0 = SVector(0.0, v_orthogonal_0, v_parallel_0)
 
 problem = ODEProblem(rhs, vcat(x0, v0), (0, tmax), (q, m, m_earth))
 solver = Tsit5()
-solution = solve(problem, solver, reltol=1e-6, abstol=1e-10)
+@time solution = solve(problem, solver, reltol=1e-6, abstol=1e-10)
 
 figure()
 a = 1
