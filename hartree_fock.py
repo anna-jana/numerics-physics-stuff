@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from numpy.typing import NDArray
 from scipy.special import erf
-from scipy.linalg import eigh, norm
+from scipy.linalg import eigh, norm, eig
 
 @dataclass
 class Nucleus:
@@ -102,17 +102,27 @@ class CGTO_1S:
                     for c3, g3 in zip(cgto_1s_3.coefficients, cgto_1s_3.gaussians)
                         for c4, g4 in zip(cgto_1s_4.coefficients, cgto_1s_4.gaussians))
 
+def make_1s_pg1_for_nucleus(nucleus):
+    coefficients = np.array([0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00])
+    zetas = np.array([0.3425250914E+01, 0.6239137298E+00, 0.1688554040E+00])
+    gaussians = [GTO_1S(nucleus.center, zeta) for zeta in zetas]
+    return CGTO_1S(coefficients, gaussians)
+
 class HartreeFockSolver:
     @staticmethod
     def compute_one_electron_matrix(compute_matrix_element, basis):
-        return np.array([[compute_matrix_element(phi1, phi2)
-        for phi1 in basis] for phi2 in basis])
+        ans = np.NAN * np.ones((len(basis), len(basis)))
+        for i in range(len(basis)):
+            for j in range(i, len(basis)):
+                ans[i, j] = ans[j, i] = compute_matrix_element(basis[i], basis[j])
+        assert np.all(np.isfinite(ans))
+        return ans
 
     @staticmethod
     def compute_two_electron_matrix(basis):
         K = len(basis)
         BasisFunction = type(basis[0])
-        two_electron = -np.ones((K, K, K, K)) # NOTE: setting this to -1 to catch any uninitizalzed elements
+        two_electron = np.NaN * np.ones((K, K, K, K)) # NOTE: setting this to NaN to catch any uninitizalzed elements
 
         for p in range(K):
             for q in range(p + 1):
@@ -126,9 +136,9 @@ class HartreeFockSolver:
                     two_electron[p, r, q, s] = two_electron[q, r, p, s] = two_electron[p, s, q, r] = two_electron[q, s, p, r] = \
                             two_electron[r, p, s, q] = two_electron[s, p, r, q] = two_electron[r, q, s, p] = two_electron[s, q, r, p] = \
                                 BasisFunction.two_electron_integral(basis[p], basis[r], basis[q], basis[s])
+        assert np.all(np.isfinite(two_electron))
 
         return two_electron - 0.5 * np.swapaxes(two_electron, 2, 3)
-
 
     def __init__(self, basis, nuclei):
         BasisFunction = type(basis[0])
@@ -152,68 +162,51 @@ class HartreeFockSolver:
             P = np.zeros((len(self.basis), len(self.basis)))
         step = 1
 
-        #breakpoint()
         while True:
-            breakpoint()
             # compute fock operator
+            # sum_rs P_rs * g_prqs
             G = np.sum(P[None, :, None, :] * self.g, axis=(1, 3))
             F = self.h + G
             # solve roothann euqation
             e, C = eigh(F, self.S)
             # normalize
             C /= np.sqrt(np.diag(C.T @ self.S @ C))[None, :]
-            # C /= np.sum(C.T @ self.S @ C)
             # new density matrix
             new_P = 2 * C @ C.T
             # check convergence
             delta = norm(P - new_P)
+            P = new_P # P = alpha * P + (1 - alpha) * new_P
             print(f"{step = }, {delta = }")
             if delta < eps:
                 break
             step += 1
-            P = new_P # P = alpha * P + (1 - alpha) * new_P
 
-        E = 0.5 * (np.sum(self.h * P) + np.sum(e))
+        E_nuc = sum(self.nuclei[i].charge * self.nuclei[j].charge / norm(self.nuclei[i].center - self.nuclei[j].center)
+            for i in range(len(self.nuclei)) for j in range(i + 1, len(self.nuclei)))
+
+        E = 0.5 * (np.sum(self.h * P) + np.sum(e)) + E_nuc
+
         print(f"{E = }")
         return P, e, E
 
-
 # https://github.com/nickelandcopper/HartreeFockPythonProgram/blob/main/Hartree_Fock_Program.ipynb
 
-energies = []
-d_min = 0.01
+def compute_H2_energy(d):
+    print(f"{d = }")
+    nuclei = [Nucleus(np.array((0, 0, 0)), 1), Nucleus(np.array((d, 0, 0)), 1)]
+    basis = list(map(make_1s_pg1_for_nucleus, nuclei))
+    solver = HartreeFockSolver(basis, nuclei)
+    _, _, energy = solver.solve()
+    return energy
+
+d_min = 1.0
 d_max = 10.0
 nsamples = 50
-bounds_lengths = np.linspace(d_min, d_max, nsamples)
-
-for d in bounds_lengths:
-    nuclei = [Nucleus(np.array((0,0,0)), 1), Nucleus(np.array((d, 0, 0)), 1)]
-
-    zeta_a = 0.3425250914E+01
-    zeta_b = 0.6239137298E+00
-    zeta_c = 0.1688554040E+00
-
-    H1_pg1a = GTO_1S(nuclei[0].center, zeta_a)
-    H1_pg1b = GTO_1S(nuclei[0].center, zeta_b)
-    H1_pg1c = GTO_1S(nuclei[0].center, zeta_c)
-
-    H2_pg1a = GTO_1S(nuclei[1].center, zeta_a)
-    H2_pg1b = GTO_1S(nuclei[1].center, zeta_b)
-    H2_pg1c = GTO_1S(nuclei[1].center, zeta_c)
-
-    coefficients = np.array([0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00])
-
-    H1_1s = CGTO_1S(coefficients, [H1_pg1a, H1_pg1b, H1_pg1c])
-    H2_1s = CGTO_1S(coefficients, [H2_pg1a, H2_pg1b, H2_pg1c])
-
-    solver = HartreeFockSolver([H1_1s, H2_1s], nuclei)
-    print(f"{d = }")
-    _, hartree_levels, energy = solver.solve()
-
-    energies.append(energy)
+bond_lengths = np.linspace(d_min, d_max, nsamples)
+energies = list(map(compute_H2_energy, bond_lengths))
 
 plt.figure()
-plt.plot(bounds_lengths, energies)
+plt.plot(bond_lengths, energies)
 plt.xlabel(r"bond length in Bor radii $d [a_0]$")
 plt.ylabel(r"bond energy in Hartree $E [E_H]$")
 plt.show()
