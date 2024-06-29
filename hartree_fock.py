@@ -184,7 +184,8 @@ class HartreeFockSolver:
         E_nuc = sum(self.nuclei[i].charge * self.nuclei[j].charge / norm(self.nuclei[i].center - self.nuclei[j].center)
             for i in range(len(self.nuclei)) for j in range(i + 1, len(self.nuclei)))
 
-        E = 0.5 * (np.sum(self.h * P) + np.sum(e)) + E_nuc
+        # TODO: I dont know why I only get the right awnser if there is a - bebore e
+        E = 0.5 * (np.sum(self.h * P) - np.sum(e)) + E_nuc
 
         print(f"{E = }")
         return P, e, E
@@ -204,9 +205,13 @@ d_max = 10.0
 nsamples = 50
 bond_lengths = np.linspace(d_min, d_max, nsamples)
 energies = list(map(compute_H2_energy, bond_lengths))
+bound_length = bond_lengths[np.argmin(energies)]
+
+to_angstrom = 0.529
 
 plt.figure()
-plt.plot(bond_lengths, energies)
-plt.xlabel(r"bond length in Bor radii $d [a_0]$")
+plt.plot(bond_lengths * to_angstrom, energies)
+plt.axvline(bound_length * to_angstrom, color="k", ls="--")
+plt.xlabel(r"bond length in Angstrom $d [A°]$")
 plt.ylabel(r"bond energy in Hartree $E [E_H]$")
 plt.show()
