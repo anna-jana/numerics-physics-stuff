@@ -40,17 +40,18 @@ end
 function foreach_particle_pair(f::Function, simulation::Simulation)
     for (i, p) in enumerate(simulation.particles)
         for (j, q) in enumerate(simulation.particles)
-            if i != j
-                diff = p.x - q.x
-                # minimum image convetion
-                for i in 1:3
-                    if abs(diff[i]) > simulation.L / 2
-                        diff[i] -= round(Int, diff[i] / simulation.L) * simulation.L
-                    end
-                end
-                d = norm(diff)
-                f(p, q, diff, d)
+            if j >= i
+                break
             end
+            diff = p.x - q.x
+            # minimum image convetion
+            for i in 1:3
+                if abs(diff[i]) > simulation.L / 2
+                    diff[i] -= round(Int, diff[i] / simulation.L) * simulation.L
+                end
+            end
+            d = norm(diff)
+            f(p, q, diff, d)
         end
     end
 
@@ -151,7 +152,7 @@ function run(rho, T, M)
     # L= M * (4rho)^(1/3)
     L = M * cbrt(4*rho)
 
-    dt = 0.004 / 2
+    dt = 0.004
     init_time = 10.0
     rescale_every_n_steps = 10
     production_time = 20.0
@@ -218,10 +219,15 @@ using Statistics
 
 M = 3
 rho = 0.8
-E_kins, E_pots, virials = Argon.run(rho, 1.0, M)
+T0 = 1.0
+E_kins, E_pots, virials = Argon.run(rho, T0, M)
 N = 4*M^3
 
 T = mean(E_kins) / ((N - 1)*3/2)
-E_pot = mean(E_pots / N)
+T_err = std(E_kins) / ((N - 1)*3/2)
+E_pot = mean(E_pots) / N
+E_pot_err = std(E_pots) / N
 
-@show rho, T, E_pot
+@show rho, T0, N
+@show T, T_err
+@show E_pot, E_pot_err
