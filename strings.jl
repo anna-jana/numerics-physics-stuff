@@ -75,7 +75,7 @@ function run()
     for i in 1:nsteps
         println("step = $i / $nsteps")
         @. field += dtau * field_dot + dtau^2/2 * field_dot_dot
-        compute_dot_dot!(field_dot_dot_new, field, tau, dx)
+        compute_dot_dot!(field_dot_dot_new, field, tau + dtau, dx)
         @. field_dot += dtau / 2 * (field_dot_dot + field_dot_dot_new)
         field_dot_dot = field_dot_dot_new
         tau += dtau
