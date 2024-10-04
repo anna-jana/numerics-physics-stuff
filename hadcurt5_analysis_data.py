@@ -6,7 +6,7 @@ default_fname = "hadcrut5_anaylsis_data.hdf5"
 default_key = "k"
 
 def download(
-    url = "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/current/analysis/diagnostics/HadCRUT.5.0.1.0.analysis.summary_series.global.monthly.csv",
+    url = "https://www.metoffice.gov.uk/hadobs/hadcrut5/data/HadCRUT.5.0.2.0/analysis/diagnostics/HadCRUT.5.0.2.0.analysis.summary_series.global.monthly.csv",
     fname = default_fname,
     key = default_key,
 ):
