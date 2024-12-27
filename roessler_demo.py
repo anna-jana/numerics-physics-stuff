@@ -23,6 +23,38 @@ def poincare_section(orbit, plane_base, plane_normal, tstep_prime, tspan):
                 crossings.append(orbit(opt_ans.root))
     return np.array(crossings)
 
+def compute_max_lyapunov_exponent(rhs, params, x0, eps, dt, N, t_relax):
+    sol = solve_ivp(rhs, (0, t_relax), x0, args=params)
+    x0 = sol.y[:, -1]
+
+    def advance(x):
+        return solve_ivp(rhs, (0, dt), x, args=params)
+
+    sol = advance(x0)
+    tangent = sol.y[:, 0] - sol.y[:, 1]
+    tangent /= np.linalg.norm(tangent)
+    pertubation = np.random.randn(tangent.shape[0])
+    pertubation /= np.linalg.norm(pertubation)
+    pertubation = pertubation - np.dot(tangent, pertubation) * tangent
+    pertubation *= eps
+
+    s = 0.0
+
+    for i in range(N):
+        x_pertubation = x0 + pertubation
+        pertubation_sol = advance(x_pertubation)
+        sol = advance(x0)
+
+        difference = pertubation_sol.y[:, -1] - sol.y[:, -1]
+
+        local_lyapunov = np.log(np.linalg.norm(difference) / eps) / dt
+        s += local_lyapunov
+
+        pertubation = difference * eps / np.linalg.norm(difference)
+        x0 = sol.y[:, -1]
+
+    return s / N
+
 params = 0.2, 0.2, 5.7
 u0 = (1, 1, 1)
 tspan = 1000.0
@@ -38,12 +70,15 @@ ps = poincare_section(sol.sol, plane_base, plane_normal, tstep_prime, tspan)
 first = ps[:-1, 1]
 second = ps[1:, 1]
 
+max_lyapunov_exponent = compute_max_lyapunov_exponent(rhs, params, u0, 1e-3, 0.1, 1000, 1000.0)
+
 fig = plt.figure(layout="constrained")
 ax = fig.add_subplot(projection="3d")
 ax.plot(*sol.sol(np.linspace(0, tspan, 10000)), lw=0.1)
 ax.set_xlabel("x")
 ax.set_ylabel("y")
 ax.set_zlabel("z")
+ax.set_title(f"maximal lyapumov exponent: {max_lyapunov_exponent:.2}")
 
 plt.figure(layout="constrained")
 plt.scatter(ps[:, 1], ps[:, 2])
