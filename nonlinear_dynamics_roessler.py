@@ -7,7 +7,7 @@ def rhs(t, u, a, b, c):
     x, y, z = u
     return (-y - z, x + a*y, b + z*(x - c))
 
-def poincare_section(orbit, plane_base, plane_normal, tstep_prime, tspan):
+def compute_poincare_section(orbit, plane_base, plane_normal, tstep_prime, tspan):
     nsteps = int(np.ceil(tspan / tstep_prime))
     tstep = tspan / (nsteps - 1)
     def plane_eval(p):
@@ -55,42 +55,61 @@ def compute_max_lyapunov_exponent(rhs, params, x0, eps, dt, N, t_relax):
 
     return s / N
 
-params = 0.2, 0.2, 5.7
-u0 = (1, 1, 1)
-tspan = 1000.0
+def compute_delay_embedding(data, offsets, var_ids):
+    max_offset = np.max(offsets)
+    nsamples = data.shape[1]
+    return [
+        data[var_id, offset : nsamples - max_offset + offset]
+        for var_id, offset in zip(var_ids, offsets)
+    ]
 
-sol = solve_ivp(rhs, (0, tspan), u0, args=params, dense_output=True)
-orbit = sol.sol
+if __name__ == "__main__":
+    params = 0.2, 0.2, 5.7
+    u0 = (1, 1, 1)
+    tspan = 1000.0
 
-plane_base = np.array((0,0,0))
-plane_normal = np.array((1, 0, 0))
-tstep_prime = 0.1
-ps = poincare_section(sol.sol, plane_base, plane_normal, tstep_prime, tspan)
+    sol = solve_ivp(rhs, (0, tspan), u0, args=params, dense_output=True)
+    data = sol.sol(np.linspace(0, tspan, 10000))
 
-first = ps[:-1, 1]
-second = ps[1:, 1]
+    plane_base = np.array((0,0,0))
+    plane_normal = np.array((1, 0, 0))
+    tstep_prime = 0.1
+    ps = compute_poincare_section(sol.sol, plane_base, plane_normal, tstep_prime, tspan)
 
-max_lyapunov_exponent = compute_max_lyapunov_exponent(rhs, params, u0, 1e-3, 0.1, 1000, 1000.0)
+    first = ps[:-1, 1]
+    second = ps[1:, 1]
 
-fig = plt.figure(layout="constrained")
-ax = fig.add_subplot(projection="3d")
-ax.plot(*sol.sol(np.linspace(0, tspan, 10000)), lw=0.1)
-ax.set_xlabel("x")
-ax.set_ylabel("y")
-ax.set_zlabel("z")
-ax.set_title(f"maximal lyapumov exponent: {max_lyapunov_exponent:.2}")
+    max_lyapunov_exponent = compute_max_lyapunov_exponent(rhs, params, u0, 1e-3, 0.1, 1000, 1000.0)
 
-plt.figure(layout="constrained")
-plt.scatter(ps[:, 1], ps[:, 2])
-plt.xlabel("y")
-plt.ylabel("z")
-plt.title(f"poincare section with base = {plane_base} and"
-            f"normal = {plane_normal}, i.e. the x plane")
+    fig = plt.figure(layout="constrained")
+    ax = fig.add_subplot(projection="3d")
+    ax.plot(*data, lw=0.1)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+    ax.set_title(f"maximal lyapumov exponent: {max_lyapunov_exponent:.2}")
 
-plt.figure(layout="constrained")
-plt.scatter(first, second)
-plt.xlabel("first")
-plt.ylabel("second")
-plt.title("poincare map")
+    plt.figure(layout="constrained")
+    plt.scatter(ps[:, 1], ps[:, 2])
+    plt.xlabel("y")
+    plt.ylabel("z")
+    plt.title(f"poincare section with base = {plane_base} and"
+                f"normal = {plane_normal}, i.e. the x plane")
 
-plt.show()
+    plt.figure(layout="constrained")
+    plt.scatter(first, second)
+    plt.xlabel("first")
+    plt.ylabel("second")
+    plt.title("poincare map")
+
+    offsets = (0, 6, 17)
+    a, b, c = compute_delay_embedding(data, offsets=offsets, var_ids=(0, 0, 0))
+    fig = plt.figure(layout="constrained")
+    ax = fig.add_subplot(projection="3d")
+    ax.plot(a, b, c, lw=0.1)
+    ax.set_xlabel(f"x(t + {offsets[0]} * dt]")
+    ax.set_ylabel(f"x(t + {offsets[1]} * dt]")
+    ax.set_zlabel(f"x(t + {offsets[2]} * dt]")
+    ax.set_title("delay embeeding of the x variable with dt = {")
+
+    plt.show()
