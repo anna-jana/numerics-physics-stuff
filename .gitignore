@@ -15,4 +15,5 @@ __pycache__
 Manifest.toml
 *.jld
 *.hdf5
-a.out
+*.out
+*.ppm
