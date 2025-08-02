@@ -1,7 +1,6 @@
 {-# language BangPatterns #-}
 {-# language OverloadedStrings #-}
 {-# language ExistentialQuantification #-}
--- {-# OPTIONS_GHC -Wall #-}
 
 import Data.Text (pack)
 import qualified Data.Text.IO as Text
@@ -14,7 +13,7 @@ import Control.Monad.Trans.State (State, get, put, evalState)
 import Control.Monad (replicateM)
 
 -------------------------------------- linear algebra -----------------------
-data Vec = Vec { getX :: {-# UNPACK #-} !Double,  getY :: {-# unpack #-} !Double,  getZ :: {-# unpack #-} !Double } deriving (Show, Eq)
+data Vec = Vec { getX :: {-# unpack #-} !Double,  getY :: {-# unpack #-} !Double,  getZ :: {-# unpack #-} !Double } deriving (Show, Eq)
 
 instance Semigroup (Vec) where
     (<>) = (.+.)
@@ -88,37 +87,52 @@ clamp (!minVal, !maxVal) = min maxVal . max minVal
 vecMean :: [Vec] -> Vec
 vecMean !vecs = foldMap id vecs ./ fromIntegral (length vecs)
 
+{-# inline isVecNearZero #-}
 isVecNearZero :: Vec -> Bool
 isVecNearZero (Vec x y z) = abs x < eps && abs y < eps && abs z < eps
     where eps = 1e-8
 
+{-# inline reflect #-}
 reflect :: Vec -> Vec -> Vec
 reflect incoming normal = incoming .-. (2 * (incoming `dot` normal)) *. normal
 
 ---------------------------------------------------- random numbers ------------------------------------
 type RandomM a = State Random.StdGen a
 
+{-# inline getRandomR #-}
 getRandomR :: Random.Random a => (a, a) -> RandomM a
 getRandomR !range = do
     gen <- get
     let (ans, gen') = Random.randomR range gen
     put gen'
-    return ans
+    return $! ans
 
-randomVector :: (Double, Double) -> RandomM (Vec)
+{-# inline randomVector #-}
+randomVector :: (Double, Double) -> RandomM Vec
 randomVector !range = Vec <$> getRandomR range <*> getRandomR range <*> getRandomR range
 
-randomUnitVector :: RandomM (Vec)
+randomUnitVector :: RandomM Vec
 randomUnitVector = do
     v <- randomVector (-1.0, 1.0)
     let vNorm = norm v
     if vNorm <= 1.0 && vNorm > 1e-160
-        then return $ v ./ vNorm
+        then return $! v ./ vNorm
         else randomUnitVector
 
-randomUnitHemiSphereVector :: Vec -> RandomM (Vec)
+{-# inline randomUnitHemiSphereVector #-}
+randomUnitHemiSphereVector :: Vec -> RandomM Vec
 randomUnitHemiSphereVector !normal =
     fmap (\v -> if v `dot` normal >= 0.0 then v else negateVec v) randomUnitVector
+
+randomUnitDiskVector :: RandomM Vec
+randomUnitDiskVector = do
+    x <- getRandomR (0.0, 1.0)
+    y <- getRandomR (0.0, 1.0)
+    let v = Vec x y 0.0
+    let n = norm2 v
+    if n < 1.0
+        then return $! v ./ sqrt n
+        else randomUnitDiskVector
 
 -------------------------------------- image ----------------------------------
 type Color = Vec
@@ -138,6 +152,7 @@ saveImage path (h, w) f = Text.writeFile path (header <> content)
 -- rays
 data Ray = Ray { rayOrigin :: !Vec , rayDirection :: !Vec } deriving (Show, Eq)
 
+{-# inline rayAt #-}
 rayAt :: Ray -> Double -> Vec
 rayAt !ray !t = rayOrigin ray .+. t *. rayDirection ray
 
@@ -179,20 +194,57 @@ instance Geometry Plane where
 -------------------------------------------- materials ----------------------------------------
 class Material mat where
     attenuation :: mat -> Vec -> Vec -> Color
-    scatter :: mat -> Vec -> Vec -> RandomM Vec
+    -- scatter mateiral pos normal incoming -> random scattering directin
+    scatter :: mat -> Vec -> Vec -> Vec -> RandomM Vec
 
-data Lambertian = Lambertian { diffuseAlbedo :: !Color } deriving (Show, Eq)
+-- diffuse
+data Lambertian = Lambertian { lambertianAlbedo :: !Color } deriving (Show, Eq)
 
 instance Material Lambertian where
-    attenuation diffuse _ _ = diffuseAlbedo diffuse
-    scatter diffuse _ normal = do -- Lambertian distribution
+    attenuation diffuse _ _ = lambertianAlbedo diffuse
+    scatter diffuse _ _ normal = do -- Lambertian distribution
         v <- randomUnitHemiSphereVector normal
-        return $ if isVecNearZero v
+        return $! if isVecNearZero v
             then normal
             else normalized (v .+. normal)
 
+-- metalic = relfective
+data Metal = Metal { metalAlbedo :: !Color, metalFuzz :: !Double } deriving (Show, Eq)
+
+instance Material Metal where
+    attenuation metal _ _ = metalAlbedo metal
+    scatter metal pos incoming normal = do
+        fuzz <- randomUnitVector
+        let reflection = reflect incoming normal
+        let scattering = normalized $ reflection .+. fuzz
+        return $! if scattering `dot` normal > 0.0 then reflection else scattering
+
+ -- diaelectrics = transperent
+data Diaelectric = Diaelectric { dialecticRefractiveIndex :: Double } deriving (Show, Eq)
+
+instance Material Diaelectric where
+    attenuation dialectic pos normal = Vec 1.0 1.0 1.0
+    scatter dialectic pos incoming normal = do
+        let normal_proj = normal `dot` incoming
+        let cos_theta = min (-normal_proj) 0.0
+        let sin_theta = sqrt (1.0 - cos_theta^2)
+        let eta = if normal_proj < 0.0 -- we need outside / inside
+                  then 1.0 / dialecticRefractiveIndex dialectic -- outside -> inside
+                  else dialecticRefractiveIndex dialectic -- inside -> outside
+        let out_tangent = eta *. (incoming .+. cos_theta *. normal)
+        let out_normal = (- sqrt(abs(1.0 - norm2 out_tangent))) *. normal
+        let refracted = normalized $ out_tangent .+. out_normal
+        let r0 = ((1 - eta) / (1 + eta))^2
+        let reflectance = r0 + (1 - r0) * (1 - cos_theta)^5
+        chance <- getRandomR (0.0, 1.0)
+        let is_total_reflection = eta * sin_theta > 1.0
+        return $! if is_total_reflection || reflectance > chance then reflect incoming normal else refracted
+
 ------------------------------------------ path tracing ---------------------------------------
-data Object = forall geo mat. (Geometry geo, Material mat) => Object !geo !mat
+data Object = forall geo mat. (Geometry geo, Material mat, Show geo, Show mat) => Object !geo !mat
+
+instance Show Object where
+    show (Object geo mat) = "Object " <> show geo <> " " <> show mat
 
 trace :: [Object] -> Ray -> Maybe (Object, Vec)
 trace objects !ray = if null hits then Nothing
@@ -204,45 +256,54 @@ trace objects !ray = if null hits then Nothing
 renderRay :: [Object] -> Ray -> Int -> RandomM Color
 renderRay objects !ray depth =
     if depth == 0
-        then return mempty
+        then return $! mempty
         else case trace objects ray of
                 Nothing -> let y = (getY (rayDirection ray) + 1) / 2
-                           in return $ vecLerp y (Vec 1.0 1.0 1.0) (Vec 0.5 0.7 1.0) -- background
+                           in return $! vecLerp y (Vec 1.0 1.0 1.0) (Vec 0.5 0.7 1.0) -- background
                 Just (Object geometry material, pos) -> do
                     let normal = getNormal geometry pos
-                    scattered <- scatter material pos normal
+                    scattered <- scatter material pos normal (rayDirection ray)
                     color <- renderRay objects (Ray pos scattered) (depth - 1)
-                    return $ attenuation material pos normal .*. color
+                    return $! attenuation material pos normal .*. color
 
 -------------------------------------- rendering --------------------------------------------
 main = do
     -- input data
+    -- camera input
+    let fov_in_degrees = 90.0 -- in degrees
+    let focal_length = 1.0
     let ideal_aspect_ratio = 16.0 / 9.0
     let image_width = 400
-    let viewport_height = 2.0
-    let camera_center = Vec 0.0 0.0 0.0
-    let focalLength = 1.0
-    let objects = [Object (Sphere (Vec 0.0 0.1 (-1.0)) 0.5) (Lambertian (Vec 0.5 0.5 0.5)),
-                   Object (Plane (Vec 0.0 (1.0) 0.0) (Vec 0.0 1.0 0.0)) (Lambertian (Vec 0.5 0.5 0.5))
-                   -- Object (Sphere (Vec 0.0 (-100.5) (-1.0)) 100.0) (Lambertian (Vec 0.5 0.5 0.5))
-                   ]
-    let nsamples = 10
-    let max_depth = 5
+    let look_from = Vec 0.0 0.0 0.0
+    let look_at = Vec 0.0 0.0 (-1.0)
+    let up = Vec 0.0 1.0 0.0
+    -- render options
+    let nsamples = 100
+    let max_depth = 100
     let output_filename = "test.ppm"
+    let objects = [ Object (Sphere (Vec 0.0 (-100.5) (-1.0)) 100.0) (Lambertian (Vec 0.8 0.8 0.0)),
+                    Object (Sphere (Vec 0.0 0.0 (-1.2)) 0.5) (Lambertian (Vec 0.1 0.2 0.5)),
+                    Object (Sphere (Vec (-1.0) 0.0 (-1.0)) 0.5) (Diaelectric 1.5),
+                    Object (Sphere (Vec (-1.0) 0.0 (-1.0)) 0.4) (Diaelectric $ 1.0 / 1.5),
+                    Object (Sphere (Vec 1.0 0.0 (-1.0)) 0.5) (Metal (Vec 0.8 0.6 0.2) 0.0) ]
 
     -- camera calculations
+    let camera_direction = look_from .-. look_at
+    let camera_center = look_from
+    let focal_length = norm camera_direction
+    let fov = fov_in_degrees / 180 * pi -- in radians
+    let viewport_height = 2 * focal_length * tan (fov / 2.0)
+    let w = normalized camera_direction
+    let u = normalized (up `cross` w)
+    let v = w `cross` u
     let image_height = floor (fromIntegral image_width / ideal_aspect_ratio) `max` 1
     let actual_aspect_ratio = fromIntegral image_width / fromIntegral image_height
     let viewport_width = actual_aspect_ratio * viewport_height
-    let viewport_u = Vec viewport_width 0.0                0.0 -- along the columns "x"
-    let viewport_v = Vec 0.0            (-viewport_height) 0.0 -- along the rows "y"
+    let viewport_u = viewport_width *. u
+    let viewport_v = viewport_height *. negateVec v
+    let viewport_upper_left = camera_center .-. focal_length *. w .-. viewport_u ./ 2 .-. viewport_v ./ 2
     let pixel_delta_u = viewport_u ./ fromIntegral image_width
     let pixel_delta_v = viewport_v ./ fromIntegral image_height
-    let viewport_upper_left =
-            camera_center
-            .-. Vec 0.0 0.0 focalLength
-            .-. viewport_u ./ 2.0
-            .-. viewport_v ./ 2.0
     let pixel00_location = viewport_upper_left .+. 0.5 *. (pixel_delta_u .+. pixel_delta_v)
 
     saveImage output_filename (image_height, image_width) $ \i j -> do
@@ -255,6 +316,6 @@ main = do
             let ray_direction = normalized $ pixel_location .-. camera_center
             let ray = Ray camera_center ray_direction
             renderRay objects ray max_depth
-        return $ vecMean colors
+        return $! vecMean colors
 
     system $ "eog " <> output_filename
