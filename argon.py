@@ -126,15 +126,6 @@ def verlet_step(x, v, F, F_new, dt):
     compute_forces(x, F_new, L)
     v += dt * 0.5 * (F + F_new)
 
-def plot_points3d(x, color=None):
-    fig = plt.figure()
-    ax = fig.add_subplot(projection="3d")
-    ax.plot(x[:, 0], x[:, 1], x[:, 2], "o", color=color)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
-    plt.show()
-
 def init_grid(M, N, L):
     nth = 0
     x = np.empty((N, 3))
@@ -161,7 +152,6 @@ if __name__ == "__main__":
     np.random.seed(100)
     M = 3
     rho = 0.8
-    T = 4.0
     dt = 0.004
     rescale_every_n_steps = 10
     init_time = 5.0
@@ -170,34 +160,49 @@ if __name__ == "__main__":
     N = 4 * M**3
     L = M * np.cbrt(4*rho)
 
-    x = init_grid(M, N, L)
-    v = init_velocity_maxwell(N, T)
-
-    F = np.empty_like(v)
-    F_new = np.empty_like(v)
-    compute_forces(x, F, L)
-
+    Ts = np.linspace(1.0, 4.0, 10)
     init_steps = int(np.ceil(init_time / dt))
     production_steps = int(np.ceil(production_time / dt))
+    data = []
 
-    E_kins = np.empty(production_steps)
-    E_pots = np.empty(production_steps)
+    for T in Ts:
+        x = init_grid(M, N, L)
+        v = init_velocity_maxwell(N, T)
 
-    for i in tqdm.tqdm(range(init_steps + production_steps)):
-        verlet_step(x, v, F, F_new, dt)
-        F, F_new = F_new, F
-        if i % rescale_every_n_steps == 0:
-            rescale_to_temperature(v, T)
-        if i >= init_steps: # we are in production mode
-            E_kins[i - init_steps] = 0.5*np.sum(v**2)
-            E_pots[i - init_steps] = compute_potential(x, L)
+        F = np.empty_like(v)
+        F_new = np.empty_like(v)
+        compute_forces(x, F, L)
 
-    E = E_kins + E_pots
-    ts = np.linspace(0.0, production_time, production_steps)
-    plt.figure(layout="constrained")
-    plt.plot(ts, E)
-    plt.xlabel("t / a.u.")
-    plt.ylabel("E / a.u.")
-    plt.show()
+        E_kins = np.empty(production_steps)
+        E_pots = np.empty(production_steps)
+
+        for i in tqdm.tqdm(range(init_steps + production_steps)):
+            verlet_step(x, v, F, F_new, dt)
+            F, F_new = F_new, F
+            if i % rescale_every_n_steps == 0:
+                rescale_to_temperature(v, T)
+            if i >= init_steps: # we are in production mode
+                E_kins[i - init_steps] = 0.5*np.sum(v**2)
+                E_pots[i - init_steps] = compute_potential(x, L)
+
+        E = E_kins + E_pots
+        data.append(E)
+
+# post processing: compute heat capacity at V = const
+E_mean = np.array(list(map(np.mean, data)))
+E_err = np.array(list(map(np.std, data)))
+Delta_T = np.diff(Ts)
+c_v = np.diff(E_mean) / Delta_T / N
+c_v_err = np.sqrt(E_err[:-1]**2 + E_err[1:]**2) / Delta_T / N
+dof = 3
+c_v_ideal = (3 + dof) / 2
+
+plt.figure(layout="constrained")
+plt.errorbar((Ts[:-1] + Ts[1:]) / 2.0,  c_v, yerr=c_v_err, fmt="o", label="Lennard Jones simulation")
+plt.axhline(c_v_ideal, ls="--", label="ideal gas")
+plt.xlabel("temperature T / a.u.")
+plt.ylabel("heat capacity at const. vol. c_v * k_B")
+plt.legend()
+plt.show()
 
 
