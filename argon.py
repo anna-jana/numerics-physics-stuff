@@ -160,7 +160,7 @@ if __name__ == "__main__":
     N = 4 * M**3
     L = M * np.cbrt(4*rho)
 
-    Ts = np.linspace(1.0, 4.0, 10)
+    Ts = np.linspace(4.5, 6.0, 10)
     init_steps = int(np.ceil(init_time / dt))
     production_steps = int(np.ceil(production_time / dt))
     data = []
@@ -188,21 +188,25 @@ if __name__ == "__main__":
         E = E_kins + E_pots
         data.append(E)
 
-# post processing: compute heat capacity at V = const
-E_mean = np.array(list(map(np.mean, data)))
-E_err = np.array(list(map(np.std, data)))
-Delta_T = np.diff(Ts)
-c_v = np.diff(E_mean) / Delta_T / N
-c_v_err = np.sqrt(E_err[:-1]**2 + E_err[1:]**2) / Delta_T / N
-dof = 3
-c_v_ideal = (3 + dof) / 2
+    # post processing: compute heat capacity at V = const
+    E_mean = np.array(list(map(np.mean, data)))
+    E_err = np.array(list(map(np.std, data)))
+    Delta_T = np.diff(Ts)
+    c_v = np.diff(E_mean) / Delta_T / N
+    c_v_err = np.sqrt(E_err[:-1]**2 + E_err[1:]**2) / Delta_T / N
+    dof = 3
+    E_ideal = dof/2*N*Ts
+    c_v_ideal = (3 + dof) / 2
 
-plt.figure(layout="constrained")
-plt.errorbar((Ts[:-1] + Ts[1:]) / 2.0,  c_v, yerr=c_v_err, fmt="o", label="Lennard Jones simulation")
-plt.axhline(c_v_ideal, ls="--", label="ideal gas")
-plt.xlabel("temperature T / a.u.")
-plt.ylabel("heat capacity at const. vol. c_v * k_B")
-plt.legend()
-plt.show()
-
-
+    fig, axs = plt.subplots(2, 1, sharex=True, layout="constrained")
+    plt.subplot(2,1,1)
+    axs[0].errorbar(Ts, E_mean, yerr=E_err, fmt="o", label="Lennard Jones simulation")
+    axs[0].plot(Ts, E_ideal, ls="--", label="ideal gas")
+    axs[0].set_ylabel("internal energy E / a.u.")
+    axs[0].legend()
+    axs[1].errorbar((Ts[:-1] + Ts[1:]) / 2.0,  c_v, yerr=c_v_err, fmt="o", label="Lennard Jones simulation")
+    axs[1].axhline(c_v_ideal, ls="--", color="tab:orange", label="ideal gas")
+    axs[1].set_xlabel("temperature T / a.u.")
+    axs[1].set_ylabel("heat capacity at const. vol. c_v * k_B")
+    #axs[1].legend()
+    plt.show()
