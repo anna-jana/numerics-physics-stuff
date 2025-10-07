@@ -17,3 +17,5 @@ Manifest.toml
 *.hdf5
 *.out
 *.ppm
+*.txt
+*.npy

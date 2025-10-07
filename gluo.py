@@ -1,34 +1,38 @@
 import os.path
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 import tqdm
-# from numba import njit # TODO
+from scipy.optimize import curve_fit
+from numba import njit
 
 ############################ SU(3) group #########################
+@njit
 def adjoint(A):
     return A.T.conj()
 
+@njit
 def reproject_su3(A):
-    A[:, 0] /= np.linalg.norm(A[:, 0])
-    A[:, 1] -= A[:, 0] * np.dot(A[:, 0], A[:, 1])
-    A[:, 1] /= np.linalg.norm(A[:, 1])
-    A[:, 2] = np.cross(A[:, 0], A[:, 1])
-
-I = np.eye(2, dtype=np.complex128)
-
-pauli = np.array([[[0, 1],
-                   [1, 0]],
-                  [[0, -1j],
-                   [1j, 0]],
-                  [[1, 0],
-                   [0, -1]]], dtype=np.complex128)
+    A[0, :] /= np.linalg.norm(A[0, :])
+    A[1, :] -= A[0, :] * np.dot(A[0, :], A[1, :])
+    A[1, :] /= np.linalg.norm(A[1, :])
+    A[2, :] = np.cross(A[0, :], A[1, :])
 
 def random_su2():
+    I = np.eye(2, dtype=np.complex128)
+
+    pauli = np.array([[[0, 1],
+                       [1, 0]],
+                      [[0, -1j],
+                       [1j, 0]],
+                      [[1, 0],
+                       [0, -1]]], dtype=np.complex128)
+
     r = np.random.rand(4) - 1.0
     eps = 1e-3
-    x = eps * r / np.linalg.norm(r)
-    sign = -1 if np.random.randint(2) == 0 else +1
-    x0 = sign * np.sqrt(1 - eps**2)
+    x = eps * r[1:] / np.linalg.norm(r[1:])
+    x0 = np.sign(r[0]) * np.sqrt(1 - eps**2)
+
     return (
         x0 * I +
         1j * x[0] * pauli[0] +
@@ -54,12 +58,14 @@ def random_su3():
     return X
 
 ##################################### lattice operations ##########################
+@njit
 def get_link(field, i, j, k, l, d, direction):
     N = field.shape[0]
     Nt = field.shape[3]
     # link in -1 direction on axis d from node {A_n}
     #                   is the same as
     # link in +1 direction on axis d from neighboring node in -1 dieection on axis d
+    # (excluding the adjoint)
     if direction == -1:
         if d == 0:
             i -= 1
@@ -75,6 +81,7 @@ def get_link(field, i, j, k, l, d, direction):
     l %= Nt
     return field[i, j, k, l, d, :, :]
 
+@njit
 def get_link_with_offset(field, i, j, k, l, d_offset, offset_direction, d, direction):
     # add offset to index
     if d_offset == 0:
@@ -87,47 +94,75 @@ def get_link_with_offset(field, i, j, k, l, d_offset, offset_direction, d, direc
         l += offset_direction
     return get_link(field, i, j, k, l, d, direction)
 
-def stapel_of_link(field, i, j, k, l, d, d_offset, offset_direction):
-    #                    ^              U2
-    #                    |          +-----+
-    # d_offset, diection |   U1 --> |     | <-- U3
-    #                    | (i,j,k,l)+=====+
-    #                    |             ^
-    #                    |         changed link
-    #                    +--------------------->
-    #                        d, always in +1 direction
-    U1 = get_link(field, i, j, k, l, d_offset, offset_direction)
-    U2 = get_link_with_offset(field, i, j, k, l, d_offset, offset_direction, d, 1)
-    U3 = get_link_with_offset(field, i, j, k, l, d, 1, d_offset, offset_direction)
-    return U1 @ U2 @ U3
-
 ######################################### physics ######################################
-def compute_action_diff(beta, field, i, j, k, l, d, old, new):
+@njit
+def compute_action_diff(beta, field, i, j, k, l, d, new):
+    N = field.shape[0]
     A = np.zeros((3, 3), dtype=np.complex128)
     for d_offset in range(4):
         if d_offset != d:
-            for direction in (-1, +1):
-                A += stapel_of_link(field, i, j, k, l, d, d_offset, direction)
+            for offset_direction in (-1, +1):
+                #                    ^              U2
+                #                    |          +-----+
+                # d_offset, diection |   U1 --> |     | <-- U3
+                #                    | (i,j,k,l)+=====+
+                #                    |             ^
+                #                    |         changed link
+                #                    +--------------------->
+                #                        d, always in +1 direction
+                U1 = adjoint(get_link(field, i, j, k, l, d_offset, offset_direction))
+                U2 = adjoint(get_link_with_offset(field, i, j, k, l, d_offset, offset_direction, d, 1))
+                U3 = get_link_with_offset(field, i, j, k, l, d, 1, d_offset, offset_direction)
+                A += U1 @ U2 @ U3
     N = field.shape[0]
-    return - beta / N * np.real(np.trace((new - field[i, j, k, l, d, direction]) @ A))
+    return - beta / N * np.real(np.trace((new - field[i, j, k, l, d, +1]) @ A))
 
-def compute_polyakov_loop(field, P):
+@njit
+def plaquetts(field):
+    N = field.shape[0]
+    Nt = field.shape[3]
+    plaq = 0.0
+    count = 0
+    for i in range(N):
+        for j in range(N):
+            for k in range(N):
+                for l in range(Nt):
+                    for d1 in range(4):
+                        for d2 in range(d1):
+                            #        ^             U2
+                            #        |          +-->--+
+                            #        |          |     |
+                            # d2, +1 |       U1 ^     v U3
+                            #        |          |     |
+                            #        | (i,j,k,l)+--<--+
+                            #        |             U4
+                            #        +--------------------->
+                            #                d1, +1
+                            U1 = get_link(field, i, j, k, l, d2, +1)
+                            U2 = get_link_with_offset(field, i, j, k, l, d2, +1, d1, +1)
+                            U3 = adjoint(get_link_with_offset(field, i, j, k, l, d1, +1, d2, +1))
+                            U4 = adjoint(get_link(field, i, j, k, l, d1, +1))
+                            plaq += np.real(np.trace(U1 @ U2 @ U3 @ U4))
+                            count += 1
+    return plaq / count
+
+################################### algorithm ##############################
+@njit
+def reproject_all(field):
     N = field.shape[0]
     Nt = field.shape[3]
     for i in range(N):
         for j in range(N):
             for k in range(N):
-                us = np.eye(3, dtype=np.complex128)
                 for l in range(Nt):
-                    us @= get_link(field, i, j, k, l, 3, 1)
-                P[i, j, k] = np.trace(us)
+                    for d in range(4):
+                        reproject_su3(field[i, j, k, l, d, :, :])
 
-################################### algorithm ##############################
 def run_simulation(beta, field, nsteps):
     N = field.shape[0]
     Nt = field.shape[3]
     reproject_every = 10
-    P = np.empty((N, N, N), dtype=np.complex128)
+    ps = []
     for mc_step in tqdm.tqdm(range(nsteps)):
         # mc sweep
         for _ in range(N**3 * Nt):
@@ -137,29 +172,43 @@ def run_simulation(beta, field, nsteps):
             k = np.random.randint(N)
             l = np.random.randint(Nt)
             d = np.random.randint(4)
-            old = field[i, j, k, l, d, :, :]
             new = random_su3()
-            action_diff = compute_action_diff(beta, field, i, j, k, l, d, old, new)
+            action_diff = compute_action_diff(beta, field, i, j, k, l, d, new)
             if np.exp(-action_diff) <= np.random.rand():
                 field[i, j, k, l, d, :, :] = new
-        # reproject
         if mc_step % reproject_every == 0:
-            for i in range(N):
-                for j in range(N):
-                    for k in range(N):
-                        for l in range(Nt):
-                            for d in range(4):
-                                reproject_su3(field[i, j, k, l, d, :, :])
+            reproject_all(field)
         # observables
-        compute_polyakov_loop(field, P)
+        ps.append(plaquetts(field))
+    return ps
 
-def load(prefix):
-    name = os.path.join(prefix, "field.npy")
-    return np.load(name)
+########################################## data analysis ##########################
+def auto_correlation(ps):
+    C = []
+    N = len(ps)
+    for n in range(N - 1):
+        L = ps[n:]
+        R = ps[:N - n]
+        C.append(np.mean(L * R) - np.mean(L) * np.mean(R))
+    return np.array(C)
 
-def save(prefix, field):
-    np.save(os.path.join(prefix, "field"), field)
+def plot(prefix):
+    ps = np.loadtxt(os.path.join(prefix, "plaquetts.dat"))
 
+    C = auto_correlation(ps)
+    f = lambda steps, scale, tau: scale * np.exp(- steps / tau)
+    (scale, tau), _ = curve_fit(f, np.arange(C.size), C, p0=(1.0, 1.0))
+
+    plt.figure()
+    plt.plot(C, label="simulation data")
+    plt.plot(f(np.arange(C.size), scale, tau), label="expoential fit")
+    plt.xlabel("mc step")
+    plt.ylabel("auto correlation of mean plaquett value")
+    plt.legend()
+    plt.title(f"{tau = }")
+    plt.show()
+
+################################# io and user interface ############################
 def start(prefix, N, Nt, beta):
     os.mkdir(prefix)
     with open(os.path.join(prefix, "beta.txt"), "w") as fh:
@@ -171,16 +220,17 @@ def start(prefix, N, Nt, beta):
                 for l in range(Nt):
                     for d in range(4):
                         field[i, j, k, l, d, :, :] = random_su3()
-    save(prefix, field)
+    np.save(os.path.join(prefix, "field"), field)
+    with open(os.path.join(prefix, "plaquetts.dat"), "w") as fh:
+        fh.write("")
 
 def run(prefix, nsteps):
-    field = load(prefix)
+    name = os.path.join(prefix, "field.npy")
+    field = np.load(name)
     with open(os.path.join(prefix, "beta.txt"), "r") as fh:
         beta = float(fh.read())
-    run_simulation(beta, field, nsteps)
-    save(prefix, field)
-
-
-
-
+    ps = run_simulation(beta, field, nsteps)
+    np.save(os.path.join(prefix, "field"), field)
+    with open(os.path.join(prefix, "plaquetts.dat"), "a") as fh:
+        fh.write("\n" + "\n".join(map(str, ps)))
 
