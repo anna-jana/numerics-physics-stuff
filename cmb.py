@@ -41,16 +41,6 @@ from scipy.interpolate import interp1d
 from astropy import constants as c
 from astropy import cosmology
 
-####################################### momentum distribution #######################################
-def compute_monopol(f):
-    return np.mean(f)
-
-num_mu_samples = 30
-mu = np.linspace(-1, +1, num_mu_samples)
-
-def compute_dipol(f):
-    return 1j * np.mean(mu * f)
-
 ############################################ constants ##############################################
 # in physical units
 T_CMB = (cosmology.Planck15.Tcmb0 * c.k_B).to("MeV").value
@@ -68,7 +58,7 @@ rho_b_0 = cosmology.Planck15.Ob(0.0) * rho_critical_today / energy_unit**4
 
 sigma_T = (c.sigma_T/c.c**2/c.hbar**2).to("1/MeV^2").value / energy_unit**2
 
-param1 = energy_unit**2 / (M_pl / energy_unit) / spacetime_unit
+param1 = energy_unit**2 / M_pl / spacetime_unit / np.sqrt(3)
 param2 = G / spacetime_unit**2 * energy_unit**4
 
 ########################################### entropy ################################################
@@ -108,16 +98,16 @@ def compute_entropy_dofs(T):
     log10_T_in_MeV = np.log10(T)
     return g_rho_interp(log10_T_in_MeV) / g_rho_over_g_s_interp(log10_T_in_MeV)
 
-cbrt_g_star_entropy_today = compute_entropy_dofs(T_CMB)
+cbrt_g_star_entropy_today = np.cbrt( compute_entropy_dofs(T_CMB) )
 
 ########################################## temperatures ##########################################
 # in energy_unit units
 def compute_photon_temperature(a):
     def goal(T):
-        return T_CMB * cbrt_g_star_entropy_today / (a * T * np.cbrt( compute_entropy_dofs(energy_unit * T) )) - 1.0
-    sol = root_scalar(goal, method="newton", x0=T_CMB / a)
+        return T_CMB * cbrt_g_star_entropy_today / (a * T * np.cbrt( compute_entropy_dofs(T) )) - 1.0
+    sol = root_scalar(goal, method="newton", x0=T_CMB / a, rtol=1e-10)
     assert sol.converged
-    return sol.root
+    return sol.root / energy_unit
 
 # in energy_unit units
 def compute_neutrino_temperature(T_gamma):
@@ -125,6 +115,16 @@ def compute_neutrino_temperature(T_gamma):
         return T_gamma
     else:
         return (4 / 11)**(1/3) * T_gamma
+
+####################################### momentum distribution #######################################
+def compute_monopol(f):
+    return np.mean(f)
+
+num_mu_samples = 10
+mu = np.linspace(-1, +1, num_mu_samples)
+
+def compute_dipol(f):
+    return 1j * np.mean(mu * f)
 
 ######################################## equations of motion ########################################
 nvars = 6
@@ -149,7 +149,7 @@ def compute_pertubation_rhs(eta, y, k):
     rho_total = rho_cdm + rho_b + rho_gamma + rho_nu # NOTE: we ignore dark energy
 
     # friedmann equations:
-    d_a_d_eta = a**2 * np.sqrt(rho_total / 3) * param1
+    d_a_d_eta = param1 * a**2 * np.sqrt(rho_total)
 
     ######## scalar pertubations ########
     # multipol moments for radtion:
@@ -179,11 +179,16 @@ def compute_pertubation_rhs(eta, y, k):
 
     # radiation:
     d_Theta_d_eta = - 1j*k*mu * Theta - d_Phi_d_eta - 1j*k*mu * Psi - d_tau_d_eta * (Theta_0 - Theta + mu * u_B)
-    d_N_d_eta = - 1j*k*mu*N - d_Phi_d_eta - 1j*k*mu * Psi
+    d_N_d_eta = np.zeros(num_mu_samples) # - 1j*k*mu*N - d_Phi_d_eta - 1j*k*mu * Psi
 
     return np.concatenate([
         [d_a_d_eta, d_Phi_d_eta, d_delta_CDM_d_eta, d_u_CDM_d_eta, d_delta_B_d_eta, d_u_B_d_eta],
         d_Theta_d_eta, d_N_d_eta])
+
+def is_today(_eta, y, _k):
+    return y[0].real - 1.0
+
+is_today.terminal = True
 
 ###################################### initial conditions #######################################
 A_s = 1.0 # amplitude of initial scalar pertubations
@@ -203,14 +208,15 @@ nks = 100
 k_max = 0.9
 ks = np.linspace(0, k_max, nks)
 # TODO
-eta_inf = 1.0 # end of inflatipn
-eta_star = 2.0 # surface of last scattering
-a_inf = 1e-7
+eta_inf = 0.0 # end of inflatipn
+t_star = 1.0
+eta_star = 4*np.sqrt(t_star) # surface of last scattering
+a_inf = 1e-6
 y0 = np.ones(nvars + 2*num_mu_samples, dtype=np.complex128)
 y0[0] = a_inf
 
 def solve(k):
-    sol = solve_ivp(compute_pertubation_rhs, (eta_inf, eta_star), y0, args=(k,), method="BDF")
+    sol = solve_ivp(compute_pertubation_rhs, (eta_inf, eta_star), y0, args=(k,), method="BDF", rtol=1e-13, events=[is_today])
     assert sol.success
     return sol
 
@@ -218,3 +224,10 @@ def plot(data):
     plt.figure()
     plt.show()
 
+sol = solve(1.0)
+a, Phi, delta_CDM, u_CDM, delta_B, u_B = sol.y[:nvars]
+Theta = sol.y[nvars:nvars + num_mu_samples]
+N = sol.y[nvars + num_mu_samples:]
+eta = sol.t
+
+#plt.plot(a, np.abs(Phi))
