@@ -32,10 +32,13 @@
 #   * rho_i -> T_CMB**4 * rho_i
 #   * T_i -> T_CMB T_i
 # * in the gravity equsations unit are combined into dimensionless parameters
+# M_pl = sqrt(1/8pi*G)
+# d f / d log x = df/dx * dx/d log(x) = df/dx / d log(x) / dx = df/dx / (1 / x) = x df / dx
+
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
+from scipy.integrate import solve_ivp, BDF
 from scipy.optimize import root_scalar
 from scipy.interpolate import interp1d
 from astropy import constants as c
@@ -46,14 +49,13 @@ from numba import njit
 # in physical units
 T_CMB = (cosmology.Planck15.Tcmb0 * c.k_B).to("MeV").value
 G = (c.G / c.hbar / c.c**5).to("1/MeV^2").value
-M_pl =  2.435e18 * 1e3 # [MeV] # https://en.m.wikiversity.org/wiki/Physics/Essays/Fedosin/Planck_mass
 H0 = (cosmology.Planck15.H0 * c.hbar).to("MeV").value
 rho_critical_today = (cosmology.Planck15.critical_density0 * c.c**2 * (c.hbar * c.c)**3).to("MeV**4").value
 
 a_start = 1e-6
 
 # choice of code units
-energy_unit = T_CMB # / a_start) # in MeV
+energy_unit = 1.0 # T_CMB # in MeV
 spacetime_unit = H0 # in MeV
 
 rho_cdm_0 = cosmology.Planck15.Odm(0.0) * rho_critical_today / energy_unit**4
@@ -61,14 +63,12 @@ rho_b_0 = cosmology.Planck15.Ob(0.0) * rho_critical_today / energy_unit**4
 
 sigma_T = (c.sigma_T/c.c**2/c.hbar**2).to("1/MeV^2").value / energy_unit**2
 
-param1 = energy_unit**2 / M_pl / spacetime_unit / np.sqrt(3)
-param2 = G / spacetime_unit**2 * energy_unit**4
+param = 1.0 # np.sqrt(G) * energy_unit**2 / spacetime_unit
 
 nks = 10
 k_max = 1.0
 ks = np.linspace(0, k_max, nks)
-eta_start = 0.0 # end of inflatipn
-eta_end = 10.0 # surface of last scattering
+
 ########################################### entropy ################################################
 g_rho_today = 2 + 7/8 * 6 * (4 / 11)**(4/3)
 g_s_today = 2 + 7/8 * 6 * 4 / 11
@@ -102,6 +102,7 @@ g_rho_over_g_s_interp = interp1d(
         log10_T_in_MeV, g_rho_over_g_s,
         kind="cubic", bounds_error=False, fill_value=(g_rho_over_g_s[0], g_rho_over_g_s[-1]))
 
+# T / MeV -> g_*_s
 def compute_entropy_dofs(T):
     log10_T_in_MeV = np.log10(T)
     return g_rho_interp(log10_T_in_MeV) / g_rho_over_g_s_interp(log10_T_in_MeV)
@@ -114,8 +115,8 @@ def compute_photon_temperature(a):
     def goal(T):
         return T_CMB * cbrt_g_star_entropy_today / (a * T * np.cbrt( compute_entropy_dofs(T) )) - 1.0
     sol = root_scalar(goal, method="newton", x0=T_CMB / a, rtol=1e-10)
-    assert sol.converged
-    return sol.root / energy_unit
+    assert sol.converged, f"{a = }"
+    return sol.root
 
 # in energy_unit units
 @njit
@@ -126,8 +127,9 @@ def compute_neutrino_temperature(T_gamma):
         return (4 / 11)**(1/3) * T_gamma
 
 ######################################## equations of motion ########################################
-n_multipol = 2
-nvars = 6
+n_multipol = 3
+assert n_multipol >= 3
+nvars = 5
 
 @njit
 def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Theta, N, T_gamma):
@@ -144,15 +146,14 @@ def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Th
     rho_total = rho_cdm + rho_b + rho_gamma + rho_nu # NOTE: we ignore dark energy
 
     # friedmann equations:
-    d_a_d_eta = param1 * a**2 * np.sqrt(rho_total)
+    d_a_d_eta = param * a**2 * np.sqrt(rho_total) * np.sqrt(8*np.pi / 3)
 
     ######## scalar pertubations ########
     # gravity:
-    Psi = - 32 * param2 * a**2 * (rho_gamma * Theta[2] + rho_nu * N[2]) / k**2 - Phi
+    Psi = - 32 * param**2 * a**2 * (rho_gamma * Theta[2] + rho_nu * N[2]) / k**2 - Phi
 
-    right = 4*np.pi * param2 * a**2 * (rho_cdm * delta_CDM + rho_b * delta_B +
+    right = 4*np.pi * param**2 * a**2 * (rho_cdm * delta_CDM + rho_b * delta_B +
                                4 * (rho_gamma * Theta[0] + rho_nu * N[0]))
-    print(right)
     d_Phi_d_eta = (right - k**2 * Phi) / (3 * d_a_d_eta / a) + d_a_d_eta / a * Psi
 
     # matter:
@@ -166,6 +167,7 @@ def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Th
     # baryons:
     d_delta_B_d_eta = - 1j*k*u_B - 3*d_Phi_d_eta
     d_u_B_d_eta = - d_a_d_eta / a * u_B - 1j*k*Psi + d_tau_d_eta * 4 * rho_gamma / (3 * rho_b) * (3j * Theta[1] + u_B)
+
 
     # radiation:
     d_Theta_d_eta = np.zeros(n_multipol, dtype=np.complex128)
@@ -184,26 +186,25 @@ def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Th
 
     d_N_d_eta = np.zeros(n_multipol, dtype=np.complex128) # TODO: ignore neutrinos for now
 
+
     # output (complicated because of numba limitions)
     out = np.zeros(nvars + 2*n_multipol, dtype=np.complex128)
-    out[:nvars] = [d_a_d_eta, d_Phi_d_eta, d_delta_CDM_d_eta, d_u_CDM_d_eta, d_delta_B_d_eta, d_u_B_d_eta]
+    out[:nvars] = [d_Phi_d_eta, d_delta_CDM_d_eta, d_u_CDM_d_eta, d_delta_B_d_eta, d_u_B_d_eta]
     out[nvars:nvars + n_multipol] = d_Theta_d_eta
     out[nvars + n_multipol:] = d_N_d_eta
+    out /= d_a_d_eta # change integration variable from eta to a
+    out *= a # change integration variable from a to log a
     return out
 
-def compute_pertubation_rhs(_, y, k):
-    a, Phi, delta_CDM, u_CDM, delta_B, u_B = y[:nvars]
+def compute_pertubation_rhs(log_a, y, k):
+    Phi, delta_CDM, u_CDM, delta_B, u_B = y[:nvars]
     Theta = y[nvars:nvars + n_multipol]
     N = y[nvars + n_multipol:]
-    a = np.real(a)
-    print("a =", a)
-    T_gamma = compute_photon_temperature(a)
+    a = np.exp(log_a)
+    #print("a =", a, "Phi =", Phi, "delta_CDM =", delta_CDM, "u_CDM =", u_CDM, "Theta[0,1,2] =", Theta[0:2])
+    print("a =", a, "Phi =", Phi)
+    T_gamma = compute_photon_temperature(a) / energy_unit
     return helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Theta, N, T_gamma)
-
-def is_today(_eta, y, _k):
-    return y[0].real - 1.0
-
-is_today.terminal = True
 
 ###################################### initial conditions #######################################
 A_s = 1.0 # amplitude of initial scalar pertubations
@@ -220,25 +221,35 @@ def compute_anisotropies():
 
 ############################################ solve odes ##################################################
 y0 = np.ones(nvars + 2*n_multipol, dtype=np.complex128)
-y0[0] = a_start
+y0[0] = 0.0
 
-def solve(k):
-    sol = solve_ivp(compute_pertubation_rhs, (eta_start, eta_end), y0, args=(k,), method="BDF", rtol=1e-10, events=[is_today])
-    if not sol.success:
-        print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!!!!!!!!!!!!!!!!!")
-        print(sol.y[0, -1])
-    return sol
+k = 0.01
 
-def plot(data):
-    plt.figure()
-    plt.show()
+solver = BDF(lambda t,y: compute_pertubation_rhs(t, y, k), np.log(a_start), y0, t_bound=np.log(1.0), rtol=1e-8)
 
-sol = solve(0.01)
-#a, Phi, delta_CDM, u_CDM, delta_B, u_B = sol.y[:nvars]
-#a = np.real(a)
-#Theta = sol.y[nvars:nvars + n_multipol]
-#N = sol.y[nvars + n_multipol:]
-#eta = sol.t
+y = []
+t = []
 
-#plt.plot(a, np.abs(Phi))
+for i in range(10**4):
+    if solver.status == "failed":
+        print("failed")
+        break
+    if solver.status == "finished":
+        print("YAY!")
+        break
+    solver.step()
+    y.append(solver.y)
+    t.append(solver.t)
+
+y = np.array(y).T
+
+# sol = solve_ivp(compute_pertubation_rhs, (np.log(a_start), np.log(1.0)), y0, args=(k,), method="BDF", rtol=1e-3, atol=1e-3)
+#assert sol.success, f"log_a_end = {sol.t[-1]}"
+# y = sol.y
+# t = sol.t
+
+Phi, delta_CDM, u_CDM, delta_B, u_B = y[:nvars]
+Theta = y[nvars:nvars + n_multipol]
+N = y[nvars + n_multipol:]
+a = np.exp(t)
 
