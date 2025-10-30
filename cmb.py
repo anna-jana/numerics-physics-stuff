@@ -35,10 +35,9 @@
 # M_pl = sqrt(1/8pi*G)
 # d f / d log x = df/dx * dx/d log(x) = df/dx / d log(x) / dx = df/dx / (1 / x) = x df / dx
 
-
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp, BDF
+from scipy.integrate import solve_ivp
 from scipy.optimize import root_scalar
 from scipy.interpolate import interp1d
 from astropy import constants as c
@@ -63,7 +62,7 @@ rho_b_0 = cosmology.Planck15.Ob(0.0) * rho_critical_today / energy_unit**4
 
 sigma_T = (c.sigma_T/c.c**2/c.hbar**2).to("1/MeV^2").value / energy_unit**2
 
-param = 1.0 # np.sqrt(G) * energy_unit**2 / spacetime_unit
+param = np.sqrt(G) * energy_unit**2 / spacetime_unit
 
 nks = 10
 k_max = 1.0
@@ -127,8 +126,7 @@ def compute_neutrino_temperature(T_gamma):
         return (4 / 11)**(1/3) * T_gamma
 
 ######################################## equations of motion ########################################
-n_multipol = 3
-assert n_multipol >= 3
+n_multipol = 2
 nvars = 5
 
 @njit
@@ -150,7 +148,10 @@ def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Th
 
     ######## scalar pertubations ########
     # gravity:
-    Psi = - 32 * param**2 * a**2 * (rho_gamma * Theta[2] + rho_nu * N[2]) / k**2 - Phi
+    if n_multipol > 2:
+        Psi = - 32 * param**2 * a**2 * (rho_gamma * Theta[2] + rho_nu * N[2]) / k**2 - Phi
+    else:
+        Psi = - Phi
 
     right = 4*np.pi * param**2 * a**2 * (rho_cdm * delta_CDM + rho_b * delta_B +
                                4 * (rho_gamma * Theta[0] + rho_nu * N[0]))
@@ -167,7 +168,6 @@ def helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Th
     # baryons:
     d_delta_B_d_eta = - 1j*k*u_B - 3*d_Phi_d_eta
     d_u_B_d_eta = - d_a_d_eta / a * u_B - 1j*k*Psi + d_tau_d_eta * 4 * rho_gamma / (3 * rho_b) * (3j * Theta[1] + u_B)
-
 
     # radiation:
     d_Theta_d_eta = np.zeros(n_multipol, dtype=np.complex128)
@@ -201,8 +201,7 @@ def compute_pertubation_rhs(log_a, y, k):
     Theta = y[nvars:nvars + n_multipol]
     N = y[nvars + n_multipol:]
     a = np.exp(log_a)
-    #print("a =", a, "Phi =", Phi, "delta_CDM =", delta_CDM, "u_CDM =", u_CDM, "Theta[0,1,2] =", Theta[0:2])
-    print("a =", a, "Phi =", Phi)
+    print("a =", a)
     T_gamma = compute_photon_temperature(a) / energy_unit
     return helper_compute_pertubation_rhs(k, a, Phi, delta_CDM, u_CDM, delta_B, u_B, Theta, N, T_gamma)
 
@@ -221,35 +220,36 @@ def compute_anisotropies():
 
 ############################################ solve odes ##################################################
 y0 = np.ones(nvars + 2*n_multipol, dtype=np.complex128)
-y0[0] = 0.0
 
-k = 0.01
+k = 1e-4
 
-solver = BDF(lambda t,y: compute_pertubation_rhs(t, y, k), np.log(a_start), y0, t_bound=np.log(1.0), rtol=1e-8)
-
-y = []
-t = []
-
-for i in range(10**4):
-    if solver.status == "failed":
-        print("failed")
-        break
-    if solver.status == "finished":
-        print("YAY!")
-        break
-    solver.step()
-    y.append(solver.y)
-    t.append(solver.t)
-
-y = np.array(y).T
-
-# sol = solve_ivp(compute_pertubation_rhs, (np.log(a_start), np.log(1.0)), y0, args=(k,), method="BDF", rtol=1e-3, atol=1e-3)
-#assert sol.success, f"log_a_end = {sol.t[-1]}"
-# y = sol.y
-# t = sol.t
+sol = solve_ivp(compute_pertubation_rhs, (np.log(a_start), np.log(1.0)), y0, args=(k,), method="BDF", rtol=1e-10)
+assert sol.success, f"log_a_end = {sol.t[-1]}"
+y = sol.y
+t = sol.t
 
 Phi, delta_CDM, u_CDM, delta_B, u_B = y[:nvars]
 Theta = y[nvars:nvars + n_multipol]
 N = y[nvars + n_multipol:]
 a = np.exp(t)
 
+plt.figure(layout="constrained")
+plt.suptitle(f"{k = }")
+lw = 2.0
+plt.subplot(2,1,1)
+plt.plot(a, np.abs(Phi), lw=lw, label=r"$\Phi$")
+plt.plot(a, np.abs(delta_CDM), lw=lw, label=r"$\delta_\mathrm{CDM}$")
+plt.plot(a, np.abs(delta_B), lw=lw, ls="--", label=r"$\delta_\mathrm{B}$")
+plt.plot(a, np.abs(u_CDM), lw=lw, label=r"$u_\mathrm{CDM}$")
+plt.plot(a, np.abs(u_B), lw=lw, ls="--", label=r"$u_\mathrm{B}$")
+plt.legend()
+plt.xscale("log")
+plt.xlabel("a")
+plt.subplot(2,1,2)
+plt.plot(a, np.abs(Theta[0]), lw=lw, label=r"$\Theta_0$")
+plt.plot(a, np.abs(Theta[1]), lw=lw, label=r"$\Theta_1$")
+plt.legend()
+plt.xscale("log")
+plt.yscale("log")
+plt.xlabel("a")
+plt.show()
